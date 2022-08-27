@@ -1,0 +1,66 @@
+client:
+  max_depth: 10
+  min_sleep: 1
+  max_sleep: 5
+  max_timeout: 30
+  max_redirections: 10
+
+urls:
+  roots:
+    - https://www.aliexpress.com
+    - https://www.instagram.com
+    - https://www.wikipedia.org
+    - https://www.facebook.com
+    - https://www.youtube.com
+    - https://www.xvideos.com
+    - https://www.twitter.com
+    - https://www.pornhub.com
+    - https://www.google.com
+    - https://www.reddit.com
+    - https://www.amazon.com
+    - https://github.com
+    - https://www.yahoo.com
+    - https://www.baidu.com
+    - https://www.ebay.com
+  blacklist:
+    childs:
+      - https://www.aliexpress.com/for_example
+    hrefs:
+      - /for_example
+    types:
+      - ico
+      - png
+      - bmp
+      - jpeg
+      - jpg
+      - psd
+      - svg
+      - tga
+      - tiff
+      - gif
+      - xml
+      - pdf
+      - css
+      - webm
+      - webp
+      - json
+      - mp3
+      - mp4
+      - ogg
+      - rar
+      - zip
+      - gz
+      - tar
+      - 7z
+      - msi
+      - exe
+      - txt
+      - js
+      - webmanifest
+
+user_agent:
+  generate: false # Not working yet
+  current: Mozilla/5.0 (X11; Linux x86_64; rv:102.0) Gecko/20100101 Firefox/102.0 # Own user agent
+
+machine_config:
+  name: machine_config # File name
