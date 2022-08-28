@@ -53,11 +53,12 @@ fn get_href<'a>(
     if let Some(href) = get_href_in_element(element) {
         if let Some(media_type_or_domain_match) = get_href_media_type_or_domain_match(href) {
             if let Some(media_type) = get_href_media_type(href, &media_type_or_domain_match) {
+                // No need to strip suffix, it's done regex
                 if !blacklist_types.contains(&media_type.to_string()) {
                     return Some(href);
                 }
             }
-        } else if !blacklist_hrefs.contains(href) {
+        } else if !blacklist_hrefs.contains(&strip_suffix_slash(href)) {
             return Some(href);
         }
     }
@@ -118,20 +119,45 @@ fn get_href_media_type<'a>(href: &str, media_type_or_domain_match: &'a Match) ->
     None
 }
 
-pub fn get_url_from_href(
-    parent_url: &str,
-    href: &str,
-    blacklist_urls: &[String],
-) -> Option<String> {
-    if href.starts_with("http") {
-        Some(href.to_string())
-    } else {
-        let url = concat_url_with_href(parent_url, href);
-        if blacklist_urls.contains(&url) {
-            None
-        } else {
+pub fn get_url(parent_url: &str, href: &str, blacklist_urls: &[String]) -> Option<String> {
+    lazy_static! {
+        static ref ARGUMENTS: Regex = Regex::new(r"(\?\S*)").unwrap(); // (\?\S*)
+    }
+
+    let url = get_url_from_href(parent_url, href);
+
+    if let Some(cap) = ARGUMENTS.captures(href) {
+        let arguments = cap.get(1).unwrap().as_str();
+        let url_without_args = url.replace(arguments, "");
+
+        if !blacklist_urls.contains(&strip_suffix_slash(&url_without_args)) {
             Some(url)
+        } else {
+            None
         }
+    } else {
+        if !blacklist_urls.contains(&strip_suffix_slash(&url)) {
+            Some(url)
+        } else {
+            None
+        }
+    }
+}
+
+// for proper verification in the blacklist
+fn strip_suffix_slash(value: &str) -> String {
+    if value.ends_with('/') {
+        value.rsplit_once('/').unwrap().0.to_string()
+    } else {
+        value.to_string()
+    }
+}
+
+fn get_url_from_href(parent_url: &str, href: &str) -> String {
+    if href.starts_with("http") {
+        href.to_string()
+    } else {
+        concat_url_with_href(parent_url, href)
     }
 }
 

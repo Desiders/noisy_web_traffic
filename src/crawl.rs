@@ -4,7 +4,7 @@ use crate::{
     machine_config::{
         parse_config, write_blacklist_url_if_need, write_blacklist_urls, MachineConfig,
     },
-    parser::{get_hrefs, get_url_from_href, parse_dom},
+    parser::{get_hrefs, get_url, parse_dom},
 };
 use log::{debug, warn};
 use rand::{distributions::Uniform, seq::SliceRandom, thread_rng, Rng};
@@ -122,7 +122,7 @@ fn crawl(
     let mut result = CrawlResult::Failure;
     let mut failure_urls = Vec::new();
     for href in hrefs {
-        let url = match get_url_from_href(url, href, &machine_config.blacklist.childs) {
+        let url = match get_url(url, href, &machine_config.blacklist.childs) {
             Some(url) => url,
             None => continue,
         };
