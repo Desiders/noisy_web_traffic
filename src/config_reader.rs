@@ -7,6 +7,7 @@ pub struct Client {
     pub max_sleep: u32,
     pub max_timeout: u32,
     pub max_redirections: u32,
+    pub max_failures: u32,
 }
 
 pub struct BlacklistUrls {
@@ -51,12 +52,14 @@ pub fn parse_config(path: &str) -> Result<Config, Box<dyn Error>> {
         let max_sleep = client["max_sleep"].as_i64().unwrap().try_into()?;
         let max_timeout = client["max_timeout"].as_i64().unwrap().try_into()?;
         let max_redirections = client["max_redirections"].as_i64().unwrap().try_into()?;
+        let max_failures = client["max_failures"].as_i64().unwrap().try_into()?;
         Client {
             max_depth,
             min_sleep,
             max_sleep,
             max_timeout,
             max_redirections,
+            max_failures,
         }
     };
 
