@@ -1,13 +1,18 @@
 use crate::{
     client::Client,
     config_reader::Config,
-    machine_config::{parse_config, write_blacklist_urls, MachineConfig},
+    machine_config::{
+        parse_config, write_blacklist_url_if_need, write_blacklist_urls, MachineConfig,
+    },
     parser::{get_hrefs, get_url_from_href, parse_dom},
 };
 use log::{debug, warn};
 use rand::{distributions::Uniform, seq::SliceRandom, thread_rng, Rng};
-use reqwest::{blocking::Response as ReqwResponse, Error as ReqwError};
-use std::{error::Error, thread::sleep as thread_sleep, time::Duration};
+use std::{
+    error::Error,
+    thread::sleep as thread_sleep,
+    time::{Duration, Instant},
+};
 
 enum CrawlResult {
     Success,
@@ -50,13 +55,17 @@ fn crawl(
             config.client.min_sleep,
             config.client.max_sleep,
         ));
-        debug!("Sleeping for {} seconds before crawling new one", time);
+        debug!(
+            "Sleeping for {} seconds before crawling new one. Current depth: {}",
+            time, current_depth
+        );
         thread_sleep(Duration::from_secs(u64::from(time)));
     }
 
+    let now = Instant::now();
     let resp = match client.get(url) {
         Ok(resp) => {
-            if write_blacklist_urls_if_need(
+            if write_blacklist_url_if_need(
                 Some(&resp),
                 None,
                 machine_config_path,
@@ -70,7 +79,7 @@ fn crawl(
         Err(err) => {
             debug!("Failed to crawl url `{}`: {}", url, err);
 
-            write_blacklist_urls_if_need(
+            write_blacklist_url_if_need(
                 None,
                 Some(&err),
                 machine_config_path,
@@ -81,14 +90,33 @@ fn crawl(
             return Ok(CrawlResult::Failure);
         }
     };
+    debug!("Crawled url took {} seconds", now.elapsed().as_secs_f32());
 
+    let now = Instant::now();
     let html = resp.text()?;
+    debug!(
+        "Parsing HTML took {} seconds. Text length and lines: {}, {}",
+        now.elapsed().as_secs_f32(),
+        html.len(),
+        html.lines().count(),
+    );
+
+    let now = Instant::now();
     let dom = parse_dom(&html)?;
+    debug!("Parsing DOM took {} seconds", now.elapsed().as_secs_f32(),);
+
+    let now = Instant::now();
     let mut hrefs = get_hrefs(
         &dom,
         &machine_config.blacklist.hrefs,
         &machine_config.blacklist.types,
     );
+    debug!(
+        "Getting hrefs took {} seconds. Hrefs count: {}",
+        now.elapsed().as_secs_f32(),
+        hrefs.len()
+    );
+
     hrefs.shuffle(&mut thread_rng());
 
     let mut result = CrawlResult::Failure;
@@ -112,6 +140,13 @@ fn crawl(
                 break;
             }
             CrawlResult::Failure => {
+                if failure_urls.len() > config.client.max_failures as usize {
+                    debug!(
+                        "Too many failures, stopped crawling to `{}`'s children URLs",
+                        url
+                    );
+                    break;
+                }
                 failure_urls.push(url);
             }
         }
@@ -121,36 +156,4 @@ fn crawl(
     }
 
     Ok(result)
-}
-
-fn write_blacklist_urls_if_need(
-    response: Option<&ReqwResponse>,
-    error: Option<&ReqwError>,
-    machine_config_path: &str,
-    url: &str,
-    is_root_url: bool,
-) -> Result<bool, Box<dyn Error>> {
-    if let Some(resp) = response {
-        if resp.status().is_success() {
-            return Ok(false);
-        }
-    }
-    if let Some(err) = error {
-        if let Some(status) = err.status() {
-            if !status.is_server_error() || !status.is_redirection() {
-                return Ok(false);
-            }
-        } else if err.is_timeout() {
-            return Ok(false);
-        }
-    }
-
-    if is_root_url {
-        write_blacklist_urls(machine_config_path, &[url.to_string()], &[], &[], &[])?;
-    } else {
-        write_blacklist_urls(machine_config_path, &[], &[url.to_string()], &[], &[])?;
-    }
-    debug!("Blacklisted url: `{}`", url);
-
-    Ok(true)
 }

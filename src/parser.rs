@@ -1,5 +1,6 @@
 use html_parser::{Dom, Element, Error as HtmlParserError, Node};
 use lazy_static::lazy_static;
+use log::debug;
 use regex::{Match, Regex};
 
 pub fn parse_dom(text: &str) -> Result<Dom, HtmlParserError> {
@@ -8,12 +9,15 @@ pub fn parse_dom(text: &str) -> Result<Dom, HtmlParserError> {
 
 pub fn get_hrefs<'a>(
     dom: &'a Dom,
-    blacklist_hrefs: &'a [String],
-    blacklist_types: &'a [String],
+    blacklist_hrefs: &[String],
+    blacklist_types: &[String],
 ) -> Vec<&'a String> {
     let mut hrefs = Vec::new();
 
-    for element in get_elements(dom) {
+    let elements = get_elements(dom);
+    debug!("Found {} elements in the tree", elements.len());
+
+    for element in elements {
         if let Some(href) = get_href(element, blacklist_hrefs, blacklist_types) {
             hrefs.push(href);
         }
@@ -43,8 +47,8 @@ fn push_elements<'a>(node: &'a Node, elements: &mut Vec<&'a Element>) {
 
 fn get_href<'a>(
     element: &'a Element,
-    blacklist_hrefs: &'a [String],
-    blacklist_types: &'a [String],
+    blacklist_hrefs: &[String],
+    blacklist_types: &[String],
 ) -> Option<&'a String> {
     if let Some(href) = get_href_in_element(element) {
         if let Some(media_type_or_domain_match) = get_href_media_type_or_domain_match(href) {
@@ -114,9 +118,9 @@ fn get_href_media_type<'a>(href: &str, media_type_or_domain_match: &'a Match) ->
     None
 }
 
-pub fn get_url_from_href<'a>(
+pub fn get_url_from_href(
     parent_url: &str,
-    href: &'a str,
+    href: &str,
     blacklist_urls: &[String],
 ) -> Option<String> {
     if href.starts_with("http") {

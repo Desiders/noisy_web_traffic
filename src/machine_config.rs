@@ -1,3 +1,5 @@
+use log::debug;
+use reqwest::{blocking::Response as ReqwResponse, Error as ReqwError};
 use serde_derive::{Deserialize, Serialize};
 use std::{
     error::Error,
@@ -31,6 +33,7 @@ pub fn create_config(path: &str) -> Result<(), Box<dyn Error>> {
     let json = serde_json::to_string_pretty(&config)?;
 
     File::create(Path::new(path))?.write_all(json.as_bytes())?;
+    debug!("Created machine config in `{}`", path);
 
     Ok(())
 }
@@ -73,4 +76,35 @@ pub fn write_blacklist_urls(
         .write_all(json.as_bytes())?;
 
     Ok(config)
+}
+
+pub fn write_blacklist_url_if_need(
+    response: Option<&ReqwResponse>,
+    error: Option<&ReqwError>,
+    machine_config_path: &str,
+    url: &str,
+    is_root_url: bool,
+) -> Result<bool, Box<dyn Error>> {
+    if let Some(resp) = response {
+        if resp.status().is_success() {
+            return Ok(false);
+        }
+    } else if let Some(err) = error {
+        if let Some(status) = err.status() {
+            if !status.is_server_error() || !status.is_redirection() {
+                return Ok(false);
+            }
+        } else if err.is_timeout() {
+            return Ok(false);
+        }
+    }
+
+    if is_root_url {
+        write_blacklist_urls(machine_config_path, &[url.to_string()], &[], &[], &[])?;
+    } else {
+        write_blacklist_urls(machine_config_path, &[], &[url.to_string()], &[], &[])?;
+    }
+    debug!("Blacklisted url: `{}`", url);
+
+    Ok(true)
 }
