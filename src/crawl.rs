@@ -93,7 +93,13 @@ fn crawl(
     debug!("Crawled url took {} seconds", now.elapsed().as_secs_f32());
 
     let now = Instant::now();
-    let html = resp.text()?;
+    let html = match resp.text() {
+        Ok(html) => html,
+        Err(err) => {
+            debug!("Failed to get html from url `{}`: {}", url, err);
+            return Ok(CrawlResult::Failure);
+        }
+    };
     debug!(
         "Parsing HTML took {} seconds. Text length and lines: {}, {}",
         now.elapsed().as_secs_f32(),

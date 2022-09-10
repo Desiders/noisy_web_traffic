@@ -56,7 +56,7 @@ fn main() {
 
         if let Some(err) = crawl::run(&client, &config, &roots, &machine_config_path).err() {
             error!("Failed to crawl: {}", err);
-            continue;
+            panic!("{}", err);
         }
     }
 }
