@@ -1,83 +1,71 @@
-use html_parser::{Dom, Element, Error as HtmlParserError, Node};
 use lazy_static::lazy_static;
 use log::debug;
 use regex::{Match, Regex};
+use tl::{parse as parse_vdom, HTMLTag, ParseError, ParserOptions, VDom};
 
-pub fn parse_dom(text: &str) -> Result<Dom, HtmlParserError> {
-    Dom::parse(text)
+pub fn parse_dom(text: &str) -> Result<VDom, ParseError> {
+    parse_vdom(text, ParserOptions::default())
 }
 
 pub fn get_hrefs<'a>(
-    dom: &'a Dom,
+    dom: &'a VDom,
     blacklist_hrefs: &[String],
     blacklist_types: &[String],
-) -> Vec<&'a String> {
+) -> Vec<&'a str> {
     let mut hrefs = Vec::new();
 
-    let elements = get_elements(dom);
-    debug!("Found {} elements in the tree", elements.len());
+    let tags = get_tags(dom, "a[href]");
+    debug!("Found {} tags in the tree", tags.len());
 
-    for element in elements {
-        if let Some(href) = get_href(element, blacklist_hrefs, blacklist_types) {
-            hrefs.push(href);
+    for tag in tags {
+        if let Some(href) = get_href_in_tag(tag) {
+            if let Some(media_type_or_domain_match) = get_href_media_type_or_domain_match(href) {
+                if let Some(media_type) =
+                    get_href_media_type_in_match(href, &media_type_or_domain_match)
+                {
+                    // No need to strip suffix, it's done regex
+                    if !blacklist_types.contains(&media_type.to_string()) {
+                        hrefs.push(href);
+                    }
+                }
+            } else if !value_in_blacklist(href, blacklist_hrefs) {
+                hrefs.push(href);
+            }
         }
     }
 
     hrefs
 }
 
-fn get_elements(dom: &Dom) -> Vec<&Element> {
-    let mut elements = Vec::new();
+fn get_tags<'a>(dom: &'a VDom, selector: &str) -> Vec<&'a HTMLTag<'a>> {
+    let mut tags = Vec::new();
 
-    for node in &dom.children {
-        push_elements(node, &mut elements);
-    }
-
-    elements
-}
-
-fn push_elements<'a>(node: &'a Node, elements: &mut Vec<&'a Element>) {
-    if let Some(element) = node.element() {
-        elements.push(element);
-        for node in &element.children {
-            push_elements(node, elements);
-        }
-    }
-}
-
-fn get_href<'a>(
-    element: &'a Element,
-    blacklist_hrefs: &[String],
-    blacklist_types: &[String],
-) -> Option<&'a String> {
-    if let Some(href) = get_href_in_element(element) {
-        if let Some(media_type_or_domain_match) = get_href_media_type_or_domain_match(href) {
-            if let Some(media_type) = get_href_media_type(href, &media_type_or_domain_match) {
-                // No need to strip suffix, it's done regex
-                if !blacklist_types.contains(&media_type.to_string()) {
-                    return Some(href);
+    let dom_parser = dom.parser();
+    if let Some(selector_iter) = dom.query_selector(selector) {
+        selector_iter.for_each(|node_handle| {
+            if let Some(node) = node_handle.get(dom_parser) {
+                if let Some(tag) = node.as_tag() {
+                    tags.push(tag);
                 }
             }
-        } else {
-            if value_in_blacklist(href, blacklist_hrefs) {
-                return None;
-            }
-            return Some(href);
-        }
+        });
     }
-    None
+
+    tags
 }
 
-fn get_href_in_element(element: &Element) -> Option<&String> {
+fn get_href_in_tag<'a>(tag: &'a HTMLTag) -> Option<&'a str> {
     lazy_static! {
         static ref HREF: Regex = Regex::new(r"^(https?:/{2}|/\w+)\S*").unwrap(); // ^(https?:\/{2}|\/\w+)\S*
     }
 
-    if let Some(Some(value)) = element.attributes.get("href") {
-        if !HREF.is_match(value) {
+    if let Some(Some(value)) = tag.attributes().get("href") {
+        let string = value.try_as_utf8_str().unwrap();
+
+        if !HREF.is_match(string) {
             return None;
         }
-        return Some(value);
+        return Some(string);
     }
     None
 }
@@ -93,7 +81,10 @@ fn get_href_media_type_or_domain_match(href: &str) -> Option<Match> {
         .map(|cap| cap.get(1).unwrap())
 }
 
-fn get_href_media_type<'a>(href: &str, media_type_or_domain_match: &'a Match) -> Option<&'a str> {
+fn get_href_media_type_in_match<'a>(
+    href: &str,
+    media_type_or_domain_match: &'a Match,
+) -> Option<&'a str> {
     lazy_static! {
         static ref PROTOCOL: Regex = Regex::new(r"^(https?:/{2})").unwrap(); // ^(https?:\/{2})
     }
@@ -125,11 +116,10 @@ fn get_href_media_type<'a>(href: &str, media_type_or_domain_match: &'a Match) ->
 pub fn get_url(parent_url: &str, href: &str, blacklist_urls: &[String]) -> Option<String> {
     let url = get_url_from_href(parent_url, href);
 
-    if value_in_blacklist(&url, blacklist_urls) {
-        None
-    } else {
-        Some(url)
+    if !value_in_blacklist(&url, blacklist_urls) {
+        return Some(url);
     }
+    None
 }
 
 fn get_url_from_href(parent_url: &str, href: &str) -> String {
