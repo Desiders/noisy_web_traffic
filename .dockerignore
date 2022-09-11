@@ -1,0 +1,10 @@
+target/
+
+machine_config.json
+
+.gitignore
+
+README.md
+LICENCE
+
+Dockerfile
