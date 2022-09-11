@@ -1,10 +1,10 @@
 client:
-  max_depth: 15 # Maximum depth of the tree
+  max_depth: 30 # Maximum depth of the tree
   min_sleep: 3 # Minimum sleep time between requests
-  max_sleep: 20 # Maximum sleep time between requests
+  max_sleep: 15 # Maximum sleep time between requests
   max_timeout: 20 # Maximum timeout for requests
   max_redirections: 10 # Maximum number of redirections
-  max_failures: 10 # Maximum number of failures before stopping crawling (for a given URL)
+  max_failures: 7 # Maximum number of failures before stopping crawling (for a given URL)
 
 urls:
   roots:
@@ -25,9 +25,9 @@ urls:
     - https://www.ebay.com
   blacklist:
     childs:
-      - https://cams.xvideos.com # So long pages, parsing can be slow
+      - https://for-example
     hrefs:
-      - /for_example
+      - /for-example
     types:
       - ico
       - png
