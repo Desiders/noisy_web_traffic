@@ -1,10 +1,10 @@
 client:
   max_depth: 30 # Maximum depth of the tree
-  min_sleep: 3 # Minimum sleep time between requests
-  max_sleep: 15 # Maximum sleep time between requests
-  max_timeout: 20 # Maximum timeout for requests
-  max_redirections: 10 # Maximum number of redirections
-  max_failures: 7 # Maximum number of failures before stopping crawling (for a given URL)
+  min_sleep: 0 # Minimum sleep time between requests
+  max_sleep: 1 # Maximum sleep time between requests
+  max_timeout: 15 # Maximum timeout for requests
+  max_redirections: 7 # Maximum number of redirections
+  max_failures: 5 # Maximum number of failures before stopping crawling (for a given URL)
 
 urls:
   roots:
