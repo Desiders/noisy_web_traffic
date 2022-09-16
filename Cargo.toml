@@ -1,6 +1,13 @@
 [package]
 name = "noisy_web_traffic"
-version = "0.1.0"
+version = "0.2.0"
+description = "Noisy web traffic generator"
+readme = "README.md"
+repository = "https://github.com/Desiders/noisy_web_traffic/"
+license-file = "LICENCE"
+keywords = ["noisy", "web", "traffic"]
+categories = ["command-line-utilities", "web-programming::http-client", "simulation"]
+
 edition = "2021"
 
 [dependencies]
