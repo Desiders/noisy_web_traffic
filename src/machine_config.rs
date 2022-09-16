@@ -1,10 +1,9 @@
-use log::debug;
+use log::{debug, info};
 use reqwest::{blocking::Response as ReqwResponse, Error as ReqwError};
 use serde_derive::{Deserialize, Serialize};
 use std::{
-    error::Error,
     fs::File,
-    io::{Read, Write},
+    io::{self, Read, Write},
     path::Path,
 };
 
@@ -21,7 +20,7 @@ pub struct MachineConfig {
     pub blacklist: BlacklistUrls,
 }
 
-pub fn create_config(path: &str) -> Result<(), Box<dyn Error>> {
+pub fn create_config(path: &str) -> io::Result<()> {
     let config = MachineConfig {
         blacklist: BlacklistUrls {
             roots: vec![],
@@ -38,12 +37,15 @@ pub fn create_config(path: &str) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn parse_config(path: &str) -> Result<MachineConfig, Box<dyn Error>> {
+pub fn parse_config(path: &str) -> serde_json::Result<MachineConfig> {
     let mut contents = String::new();
 
-    File::open(Path::new(path))?.read_to_string(&mut contents)?;
+    File::open(Path::new(path))
+        .expect("Failed to open machine config")
+        .read_to_string(&mut contents)
+        .expect("Failed to read machine config");
 
-    Ok(serde_json::from_str::<MachineConfig>(&contents)?)
+    serde_json::from_str::<MachineConfig>(&contents)
 }
 
 pub fn write_blacklist_urls(
@@ -52,7 +54,7 @@ pub fn write_blacklist_urls(
     childs: &[String],
     hrefs: &[String],
     types: &[String],
-) -> Result<MachineConfig, Box<dyn Error>> {
+) -> io::Result<MachineConfig> {
     let mut config = parse_config(path)?;
 
     for (urls, save) in [
@@ -84,7 +86,7 @@ pub fn write_blacklist_url_if_need(
     machine_config_path: &str,
     url: &str,
     is_root_url: bool,
-) -> Result<bool, Box<dyn Error>> {
+) -> io::Result<bool> {
     if let Some(resp) = response {
         if resp.status().is_success() {
             return Ok(false);
@@ -104,7 +106,7 @@ pub fn write_blacklist_url_if_need(
     } else {
         write_blacklist_urls(machine_config_path, &[], &[url.to_string()], &[], &[])?;
     }
-    debug!("Blacklisted url: `{}`", url);
+    info!("Add `{}` to the blacklist", url);
 
     Ok(true)
 }

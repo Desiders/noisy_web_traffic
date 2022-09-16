@@ -1,10 +1,15 @@
 use lazy_static::lazy_static;
 use log::debug;
 use regex::{Match, Regex};
+use std::time::Instant;
 use tl::{parse as parse_vdom, HTMLTag, ParseError, ParserOptions, VDom};
 
 pub fn parse_dom(text: &str) -> Result<VDom, ParseError> {
-    parse_vdom(text, ParserOptions::default())
+    let now = Instant::now();
+    let result = parse_vdom(text, ParserOptions::default());
+    debug!("DOM parsing took {} seconds", now.elapsed().as_secs_f32());
+
+    result
 }
 
 pub fn get_hrefs<'a>(
@@ -12,11 +17,14 @@ pub fn get_hrefs<'a>(
     blacklist_hrefs: &[String],
     blacklist_types: &[String],
 ) -> Vec<&'a str> {
-    let mut hrefs = Vec::new();
+    let mut hrefs = vec![];
 
+    let now = Instant::now();
     let tags = get_tags(dom, "a[href]");
     debug!("Found {} tags in the tree", tags.len());
+    debug!("Getting tags took {} seconds", now.elapsed().as_secs_f32());
 
+    let now = Instant::now();
     for tag in tags {
         if let Some(href) = get_href_in_tag(tag) {
             if let Some(media_type_or_domain_match) = get_href_media_type_or_domain_match(href) {
@@ -33,6 +41,8 @@ pub fn get_hrefs<'a>(
             }
         }
     }
+    debug!("Found {} hrefs in the tree", hrefs.len());
+    debug!("Getting hrefs took {} seconds", now.elapsed().as_secs_f32());
 
     hrefs
 }
@@ -62,12 +72,14 @@ fn get_href_in_tag<'a>(tag: &'a HTMLTag) -> Option<&'a str> {
     if let Some(Some(value)) = tag.attributes().get("href") {
         let string = value.try_as_utf8_str().unwrap();
 
-        if !HREF.is_match(string) {
-            return None;
+        if HREF.is_match(string) {
+            Some(string)
+        } else {
+            None
         }
-        return Some(string);
+    } else {
+        None
     }
-    None
 }
 
 fn get_href_media_type_or_domain_match(href: &str) -> Option<Match> {
@@ -107,80 +119,64 @@ fn get_href_media_type_in_match<'a>(
     if slash_count > 2 {
         // href has got slash more than 2 times (2 becuase `https://` has got 2 slashes)
         let media_type = media_type_or_domain_match.as_str();
-        return Some(media_type);
+        Some(media_type)
+    } else {
+        // ignore, because it's a domain
+        None
     }
-    // ignore, because it's a domain
-    None
 }
 
 pub fn get_url(parent_url: &str, href: &str, blacklist_urls: &[String]) -> Option<String> {
     let url = get_url_from_href(parent_url, href);
 
-    if !value_in_blacklist(&url, blacklist_urls) {
-        return Some(url);
+    if value_in_blacklist(&url, blacklist_urls) {
+        None
+    } else {
+        Some(url)
     }
-    None
 }
 
 fn get_url_from_href(parent_url: &str, href: &str) -> String {
-    if href.starts_with("http") {
-        href.to_string()
-    } else {
+    if href.starts_with('/') {
         concat_url_with_href(parent_url, href)
+    } else {
+        href.to_string()
     }
 }
 
 fn concat_url_with_href(url: &str, href: &str) -> String {
-    if url.ends_with('/') {
-        if !href.starts_with('/') {
-            // it's impossible, because regex check it, but here for clarity
-            unimplemented!();
-        }
-        let mut string = href.to_string();
-        string.remove(0);
-
-        format!("{}{}", url, string)
-    } else {
-        if !href.starts_with('/') {
-            // it's impossible, because regex check it, but here for clarity
-            unimplemented!();
-        }
-        format!("{}{}", url, href)
+    lazy_static! {
+        static ref PROTOCOL: Regex = Regex::new(r"^(https?:/{2})").unwrap(); // ^(https?:\/{2})
     }
+
+    assert!(href.starts_with('/'));
+
+    let cap = PROTOCOL.captures(url).unwrap();
+    let protocol = cap.get(1).unwrap().as_str();
+    let url_without_protocol = url.replace(protocol, "");
+
+    let base_url = if let Some(slash_index) = url_without_protocol.find('/') {
+        if url.rfind('/').unwrap() == slash_index {
+            url_without_protocol.trim_end_matches('/').to_string()
+        } else {
+            url_without_protocol[..slash_index].to_string()
+        }
+    } else {
+        url_without_protocol
+    };
+
+    debug!(
+        "Protocol: {}, base_url: {}, href: {}",
+        protocol, base_url, href
+    );
+    format!("{}{}{}", protocol, base_url, href)
 }
 
-fn value_in_blacklist(value: &str, blacklist: &[String]) -> bool {
-    lazy_static! {
-        static ref ARGUMENTS: Regex = Regex::new(r"(\?\S*)").unwrap(); // (\?\S*)
-    }
-
-    if let Some(cap) = ARGUMENTS.captures(value) {
-        let arguments = cap.get(1).unwrap().as_str();
-        let value_without_args = value.replace(arguments, "");
-
-        let value_stripped = strip_value_after_slash(&value_without_args);
-        for blacklist_value in blacklist {
-            if value_stripped.starts_with(blacklist_value) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    let value_stripped = strip_value_after_slash(value);
+pub fn value_in_blacklist(value: &str, blacklist: &[String]) -> bool {
     for blacklist_value in blacklist {
-        if value_stripped.starts_with(blacklist_value) {
+        if value.starts_with(blacklist_value) {
             return true;
         }
     }
     false
-}
-
-// for proper verification in the blacklist
-fn strip_value_after_slash(value: &str) -> String {
-    if value.ends_with('/') {
-        value.rsplit_once('/').unwrap().0.to_string()
-    } else {
-        value.to_string()
-    }
 }

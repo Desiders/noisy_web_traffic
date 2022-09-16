@@ -1,11 +1,11 @@
-use log::debug;
+use log::{debug, info};
 use reqwest::{
     blocking::{Client as ReqwClient, RequestBuilder, Response},
     header::USER_AGENT,
     redirect::Policy,
     Error as ReqwError,
 };
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub struct Client {
     reqw: ReqwClient,
@@ -34,7 +34,7 @@ impl Client {
 
     #[must_use]
     fn generate_user_agent(&self) -> String {
-        todo!()
+        todo!("Generate user agent");
     }
 
     #[must_use]
@@ -54,8 +54,12 @@ impl Client {
     }
 
     pub fn get(&self, url: &str) -> Result<Response, ReqwError> {
-        debug!("Client sending request to `{}`", url);
+        info!("Sending request to `{}`", url);
 
-        self.send(self.reqw.get(url))
+        let now = Instant::now();
+        let response = self.send(self.reqw.get(url));
+        debug!("Crawling url took {} seconds", now.elapsed().as_secs_f32());
+
+        response
     }
 }
