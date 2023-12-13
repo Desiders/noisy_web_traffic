@@ -1,62 +1,90 @@
-title = "Route rules"
+# Route rules are used to determine the request that should be routed.
+# If a request matches at least one of each rule, it routes, otherwise rejects
+#
+# The following rules are supported:
+# - Hosts: The host header of the request must match one of the acceptable hosts and none of the unacceptable hosts.
+# - Schemes: The scheme of the request must match one of the acceptable schemes and none of the unacceptable schemes.
+# - Ports: The port of the request must match one of the acceptable ports and none of the unacceptable ports.
+# - Paths: The path of the request must match one of the acceptable paths and none of the unacceptable paths.
+# - Methods: The method of the request must match one of the acceptable methods and none of the unacceptable methods.
+#
+# For use exact rules, the value must be a valid exact pattern and specified as a string in the `exact` field.
+# For use globbing rules, the value must be a valid globbing pattern and specified as a string in the `glob` field.
+# Be aware, that the `glob` field is supported only for some rules. See the list of supported rules below and its descriptions.
+# If specified both `exact` and `glob` fields, the `exact` field takes precedence.
+#
+# The following globbing rules are supported:
+# - `?` matches any single character.
+# - `*` matches any (possibly empty) sequence of characters.
+# - `**` matches the current path and arbitrary path segments.
+# This sequence **must** form a single path component, so both `**a` and `b**` are invalid and will result in an error.  A sequence of more than two
+# consecutive `*` characters is also invalid.
+# `[...]` matches any character inside the brackets.
+# Character sequences can also specify ranges of characters, as ordered by Unicode, so e.g. `[0-9]` specifies any character between 0 and 9 inclusive.
+# An unclosed bracket is invalid.
+# `[!...]` is the negation of `[...]`, i.e. it matches any characters **not** in the brackets.
+# The metacharacters `?`, `*`, `[`, `]` can be matched by using brackets (e.g. `[?]`).
+# When a `]` occurs immediately following `[` or `[!` then it is interpreted as being part of, rather then ending,
+# the character set, so `]` and NOT `]` can be matched by `[]]` and `[!]]` respectively.
+# The `-` character can be specified inside a character sequence pattern by placing it at the start or the end, e.g. `[abc-]`.
 
 [routes]
 
-# Hosts that are acceptable for this route. Accepts globbing.
+# Hosts that are acceptable for this route. **Supports globbing**.
 # If no hosts are specified, all hosts are acceptable.
 # If hosts are specified in both acceptable and unacceptable lists, the unacceptable list takes precedence.
 [[routes.hosts.acceptable]]
 
-# Hosts that are unacceptable for this route. Accepts globbing.
+# Hosts that are unacceptable for this route. **Supports globbing**.
 # If no hosts are specified, all hosts from the acceptable list are acceptable.
 # If hosts are specified in both acceptable and unacceptable lists, the unacceptable list takes precedence.
 [[routes.hosts.unacceptable]]
-value = "example.com"
+exact = "example.com"
 
 # Schemes that are acceptable for this route.
 # Supported values: http, https
 # If no schemes are specified, all schemes are acceptable.
 [[routes.schemes.acceptable]]
-value = "https"
+exact = "https"
 
 # Schemes that are unacceptable for this route.
 # Supported values: http, https
 # If no schemes are specified, all supported schemes from the acceptable list are acceptable.
 # If schemes are specified in both acceptable and unacceptable lists, the unacceptable list takes precedence.
 [[routes.schemes.unacceptable]]
-value = "http"
+exact = "http"
 
-# Ports that are acceptable for this route. Accepts globbing.
+# Ports that are acceptable for this route. **Supports globbing**.
 # If no ports are specified, all ports are acceptable.
 # If ports are specified in both acceptable and unacceptable lists, the unacceptable list takes precedence.
 [[routes.ports.acceptable]]
 
-# Ports that are unacceptable for this route. Accepts globbing.
+# Ports that are unacceptable for this route. **Supports globbing**.
 # If no ports are specified, all ports from the acceptable list are acceptable.
 # If ports are specified in both acceptable and unacceptable lists, the unacceptable list takes precedence.
 [[routes.ports.unacceptable]]
 
-# Paths that are acceptable for this route. Accepts globbing.
+# Paths that are acceptable for this route. **Supports globbing**.
 # If no paths are specified, all paths are acceptable.
 # If paths are specified in both acceptable and unacceptable lists, the unacceptable list takes precedence.
 [[routes.paths.acceptable]]
 
-# Paths that are unacceptable for this route. Accepts globbing.
+# Paths that are unacceptable for this route. **Supports globbing**.
 # If no paths are specified, all paths from the acceptable list are acceptable.
 # If paths are specified in both acceptable and unacceptable lists, the unacceptable list takes precedence.
 [[routes.paths.unacceptable]]
-value = "/admin/*"
+glob = "/admin/*"
 
 # Methods that are acceptable for this route.
 # Supported values: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS
 # If no methods are specified, all supported methods are acceptable.
 # If methods are specified in both acceptable and unacceptable lists, the unacceptable list takes precedence.
 [[routes.methods.acceptable]]
-value = "GET"
+exact = "GET"
 
 # Methods that are unacceptable for this route.
 # Supported values: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS
 # If no methods are specified, all methods from the acceptable list are acceptable.
 # If methods are specified in both acceptable and unacceptable lists, the unacceptable list takes precedence.
 [[routes.methods.unacceptable]]
-value = "POST"
+exact = "POST"

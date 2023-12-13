@@ -1,8 +1,6 @@
 use super::permission::Kind as PermissionKind;
 
-use crate::glob::analyzer::has_pattern;
-
-use glob::Pattern;
+use glob::{Pattern, PatternError};
 use url::{Host, ParseError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -10,6 +8,16 @@ pub enum Kind {
     Glob(Pattern),
     Exact(Host),
     Any,
+}
+
+impl Kind {
+    pub fn glob(pattern: impl AsRef<str>) -> Result<Self, PatternError> {
+        Ok(Self::Glob(Pattern::new(pattern.as_ref())?))
+    }
+
+    pub fn exact(host: impl AsRef<str>) -> Result<Self, ParseError> {
+        Ok(Self::Exact(Host::parse(host.as_ref())?))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -21,25 +29,5 @@ pub struct Matcher {
 impl Matcher {
     pub const fn new(permission: PermissionKind, kind: Kind) -> Self {
         Self { permission, kind }
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum ErrorKind {
-    #[error("Invalid host: {0}")]
-    Parse(#[from] ParseError),
-    #[error("Invalid glob pattern: {0}")]
-    Glob(#[from] glob::PatternError),
-}
-
-impl TryFrom<String> for Kind {
-    type Error = ErrorKind;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        if has_pattern(&value) {
-            Ok(Self::Glob(Pattern::new(&value)?))
-        } else {
-            Ok(Self::Exact(Host::parse(&value)?))
-        }
     }
 }
