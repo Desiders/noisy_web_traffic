@@ -1,0 +1,62 @@
+title = "Route rules"
+
+[routes]
+
+# Hosts that are acceptable for this route. Accepts globbing.
+# If no hosts are specified, all hosts are acceptable.
+# If hosts are specified in both acceptable and unacceptable lists, the unacceptable list takes precedence.
+[[routes.hosts.acceptable]]
+
+# Hosts that are unacceptable for this route. Accepts globbing.
+# If no hosts are specified, all hosts from the acceptable list are acceptable.
+# If hosts are specified in both acceptable and unacceptable lists, the unacceptable list takes precedence.
+[[routes.hosts.unacceptable]]
+value = "example.com"
+
+# Schemes that are acceptable for this route.
+# Supported values: http, https
+# If no schemes are specified, all schemes are acceptable.
+[[routes.schemes.acceptable]]
+value = "https"
+
+# Schemes that are unacceptable for this route.
+# Supported values: http, https
+# If no schemes are specified, all supported schemes from the acceptable list are acceptable.
+# If schemes are specified in both acceptable and unacceptable lists, the unacceptable list takes precedence.
+[[routes.schemes.unacceptable]]
+value = "http"
+
+# Ports that are acceptable for this route. Accepts globbing.
+# If no ports are specified, all ports are acceptable.
+# If ports are specified in both acceptable and unacceptable lists, the unacceptable list takes precedence.
+[[routes.ports.acceptable]]
+
+# Ports that are unacceptable for this route. Accepts globbing.
+# If no ports are specified, all ports from the acceptable list are acceptable.
+# If ports are specified in both acceptable and unacceptable lists, the unacceptable list takes precedence.
+[[routes.ports.unacceptable]]
+
+# Paths that are acceptable for this route. Accepts globbing.
+# If no paths are specified, all paths are acceptable.
+# If paths are specified in both acceptable and unacceptable lists, the unacceptable list takes precedence.
+[[routes.paths.acceptable]]
+
+# Paths that are unacceptable for this route. Accepts globbing.
+# If no paths are specified, all paths from the acceptable list are acceptable.
+# If paths are specified in both acceptable and unacceptable lists, the unacceptable list takes precedence.
+[[routes.paths.unacceptable]]
+value = "/admin/*"
+
+# Methods that are acceptable for this route.
+# Supported values: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS
+# If no methods are specified, all supported methods are acceptable.
+# If methods are specified in both acceptable and unacceptable lists, the unacceptable list takes precedence.
+[[routes.methods.acceptable]]
+value = "GET"
+
+# Methods that are unacceptable for this route.
+# Supported values: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS
+# If no methods are specified, all methods from the acceptable list are acceptable.
+# If methods are specified in both acceptable and unacceptable lists, the unacceptable list takes precedence.
+[[routes.methods.unacceptable]]
+value = "POST"
