@@ -1,6 +1,8 @@
-use super::{route::Route, rules::Rules};
-
-use crate::models::routes::{host, method, path, permission::Kind as PermissionKind, port, scheme};
+use crate::models::{
+    route::Route,
+    routes::{host, method, path, permission::Kind as PermissionKind, port, scheme},
+    rules::Rules,
+};
 
 use tracing::{event, instrument, Level};
 
