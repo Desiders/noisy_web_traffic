@@ -1,4 +1,4 @@
-use super::routes::{
+use crate::models::routes::{
     host, hosts::Hosts, method, methods::Methods, path, paths::Paths, port, ports::Ports, scheme,
     schemes::Schemes,
 };
@@ -66,58 +66,52 @@ pub struct Builder {
 }
 
 impl Builder {
-    pub fn hosts(mut self, hosts: impl IntoIterator<Item = super::routes::host::Matcher>) -> Self {
+    pub fn hosts(mut self, hosts: impl IntoIterator<Item = host::Matcher>) -> Self {
         self.hosts.extend(hosts);
         self
     }
 
-    pub fn host(mut self, host: super::routes::host::Matcher) -> Self {
+    pub fn host(mut self, host: host::Matcher) -> Self {
         self.hosts.extend(iter::once(host));
         self
     }
 
-    pub fn methods(
-        mut self,
-        methods: impl IntoIterator<Item = super::routes::method::Matcher>,
-    ) -> Self {
+    pub fn methods(mut self, methods: impl IntoIterator<Item = method::Matcher>) -> Self {
         self.methods.extend(methods);
         self
     }
 
-    pub fn method(mut self, method: super::routes::method::Matcher) -> Self {
+    pub fn method(mut self, method: method::Matcher) -> Self {
         self.methods.extend(iter::once(method));
         self
     }
 
-    pub fn paths(mut self, paths: impl IntoIterator<Item = super::routes::path::Matcher>) -> Self {
+    pub fn paths(mut self, paths: impl IntoIterator<Item = path::Matcher>) -> Self {
         self.paths.extend(paths);
         self
     }
 
-    pub fn path(mut self, path: super::routes::path::Matcher) -> Self {
+    pub fn path(mut self, path: path::Matcher) -> Self {
         self.paths.extend(iter::once(path));
         self
     }
 
-    pub fn ports(mut self, ports: impl IntoIterator<Item = super::routes::port::Matcher>) -> Self {
+    pub fn ports(mut self, ports: impl IntoIterator<Item = port::Matcher>) -> Self {
         self.ports.extend(ports);
         self
     }
 
-    pub fn port(mut self, port: super::routes::port::Matcher) -> Self {
+    pub fn port(mut self, port: port::Matcher) -> Self {
         self.ports.extend(iter::once(port));
         self
     }
 
-    pub fn schemes(
-        mut self,
-        schemes: impl IntoIterator<Item = super::routes::scheme::Matcher>,
-    ) -> Self {
+    pub fn schemes(mut self, schemes: impl IntoIterator<Item = scheme::Matcher>) -> Self {
         self.schemes.extend(schemes);
         self
     }
 
-    pub fn scheme(mut self, scheme: super::routes::scheme::Matcher) -> Self {
+    pub fn scheme(mut self, scheme: scheme::Matcher) -> Self {
         self.schemes.extend(iter::once(scheme));
         self
     }

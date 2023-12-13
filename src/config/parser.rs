@@ -1,75 +1,78 @@
-use super::{
-    route::Route,
-    routes::{host, method, path, permission::Kind as PermissionKind, port, scheme},
-    rules::Rules,
-};
+use super::{route::Route, rules::Rules};
 
-use std::num::ParseIntError;
-use tracing::{event, instrument, Level, Span};
+use crate::models::routes::{host, method, path, permission::Kind as PermissionKind, port, scheme};
+
+use tracing::{event, instrument, Level};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ErrorKind {
     #[error("Parse toml error: {0}")]
     ParseToml(#[from] toml::de::Error),
+
     #[error("Config must be a table, found {0}")]
     ConfigMustBeTable(toml::Value),
     #[error("Routes not found in table: {0}")]
     RoutesNotFound(toml::map::Map<String, toml::Value>),
     #[error("Routes must be a table, found {0}")]
     RoutesMustBeTable(toml::Value),
+
     #[error("Hosts must be a table, found {0}")]
     HostsMustBeTable(toml::Value),
-    #[error("Methods must be a table, found {0}")]
-    MethodsMustBeTable(toml::Value),
-    #[error("Schemes must be a table, found {0}")]
-    SchemesMustBeTable(toml::Value),
-    #[error("Ports must be a table, found {0}")]
-    PortsMustBeTable(toml::Value),
-    #[error("Paths must be a table, found {0}")]
-    PathsMustBeTable(toml::Value),
     #[error("Hosts must be an array, found {0}")]
     HostsMustBeArray(toml::Value),
-    #[error("Methods must be an array, found {0}")]
-    MethodsMustBeArray(toml::Value),
-    #[error("Schemes must be an array, found {0}")]
-    SchemesMustBeArray(toml::Value),
-    #[error("Ports must be an array, found {0}")]
-    PortsMustBeArray(toml::Value),
-    #[error("Paths must be an array, found {0}")]
-    PathsMustBeArray(toml::Value),
     #[error("Host must be a table, found {0}")]
     HostMustBeTable(toml::Value),
-    #[error("Method must be a table, found {0}")]
-    MethodMustBeTable(toml::Value),
-    #[error("Scheme must be a table, found {0}")]
-    SchemeMustBeTable(toml::Value),
-    #[error("Port must be a table, found {0}")]
-    PortMustBeTable(toml::Value),
-    #[error("Path must be a table, found {0}")]
-    PathMustBeTable(toml::Value),
-    #[error("Host value must be a table, found {0}")]
-    HostValueMustBeTable(toml::Value),
     #[error("Host value must be a string, found {0}")]
     HostValueMustBeString(toml::Value),
+    #[error(transparent)]
+    Host(#[from] host::ErrorKind),
+
+    #[error("Methods must be a table, found {0}")]
+    MethodsMustBeTable(toml::Value),
+    #[error("Methods must be an array, found {0}")]
+    MethodsMustBeArray(toml::Value),
+    #[error("Method must be a table, found {0}")]
+    MethodMustBeTable(toml::Value),
     #[error("Method value must be a string, found {0}")]
     MethodValueMustBeString(toml::Value),
-    #[error("Scheme value must be a string, found {0}")]
-    SchemeValueMustBeString(toml::Value),
-    #[error("Port value must be a string or an int, found {0}")]
-    PortValueMustBeStringOrInt(toml::Value),
-    #[error("Path value must be a string, found {0}")]
-    PathValueMustBeString(toml::Value),
-    #[error("Parse host error: {0}")]
-    ParseHost(#[from] url::ParseError),
     #[error(transparent)]
     UnsupportedMethod(#[from] method::UnsupportedMethodError),
+
+    #[error("Schemes must be a table, found {0}")]
+    SchemesMustBeTable(toml::Value),
+    #[error("Schemes must be an array, found {0}")]
+    SchemesMustBeArray(toml::Value),
+    #[error("Scheme must be a table, found {0}")]
+    SchemeMustBeTable(toml::Value),
+    #[error("Scheme value must be a string, found {0}")]
+    SchemeValueMustBeString(toml::Value),
     #[error(transparent)]
     UnsupportedScheme(#[from] scheme::UnsupportedSchemeError),
-    #[error("Parse port error: {0}")]
-    ParsePort(#[from] ParseIntError),
+
+    #[error("Ports must be a table, found {0}")]
+    PortsMustBeTable(toml::Value),
+    #[error("Ports must be an array, found {0}")]
+    PortsMustBeArray(toml::Value),
+    #[error("Port must be a table, found {0}")]
+    PortMustBeTable(toml::Value),
+    #[error("Port value must be a string or an int, found {0}")]
+    PortValueMustBeStringOrInt(toml::Value),
+    #[error(transparent)]
+    Port(#[from] port::ErrorKind),
+
+    #[error("Paths must be a table, found {0}")]
+    PathsMustBeTable(toml::Value),
+    #[error("Paths must be an array, found {0}")]
+    PathsMustBeArray(toml::Value),
+    #[error("Path must be a table, found {0}")]
+    PathMustBeTable(toml::Value),
+    #[error("Path value must be a string, found {0}")]
+    PathValueMustBeString(toml::Value),
+    #[error(transparent)]
+    Path(#[from] path::ErrorKind),
 }
 
-#[instrument(skip_all, fields(title))]
+#[instrument(skip_all)]
 pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
     event!(Level::DEBUG, "Parse rules from toml");
 
@@ -78,14 +81,6 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
         Some(table) => table,
         None => return Err(ErrorKind::ConfigMustBeTable(value)),
     };
-
-    if let Some(title) = table.get("title") {
-        if let Some(title) = title.as_str() {
-            Span::current().record("title", title);
-        } else {
-            event!(Level::WARN, "Title must be a string");
-        }
-    }
 
     let routes = match table.get("routes") {
         Some(routes) => match routes.as_table() {
@@ -530,7 +525,7 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                                         Some(path) => {
                                             route_builder = route_builder.path(path::Matcher::new(
                                                 PermissionKind::Acceptable,
-                                                path::Kind::from(path.to_owned()),
+                                                path::Kind::try_from(path.to_owned())?,
                                             ));
                                         }
                                         None => {
@@ -569,7 +564,7 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                                         Some(path) => {
                                             route_builder = route_builder.path(path::Matcher::new(
                                                 PermissionKind::Unacceptable,
-                                                path::Kind::from(path.to_owned()),
+                                                path::Kind::try_from(path.to_owned())?,
                                             ));
                                         }
                                         None => {
@@ -605,6 +600,7 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
 mod tests {
     use super::*;
 
+    use glob::Pattern;
     use url::Host;
 
     #[test]
@@ -697,7 +693,7 @@ mod tests {
         assert_eq!(route.ports.acceptable[1], port::Kind::Exact(80));
         assert_eq!(
             route.ports.acceptable[2],
-            port::Kind::Glob("80*".to_owned())
+            port::Kind::Glob(Pattern::new("80*").unwrap())
         );
         assert_eq!(route.ports.unacceptable.len(), 0);
 
@@ -708,12 +704,12 @@ mod tests {
         );
         assert_eq!(
             route.paths.acceptable[1],
-            path::Kind::Glob("/example2/*".to_owned())
+            path::Kind::Glob(Pattern::new("/example2/*").unwrap())
         );
         assert_eq!(route.paths.unacceptable.len(), 1);
         assert_eq!(
             route.paths.unacceptable[0],
-            path::Kind::Glob("/admin/*".to_owned())
+            path::Kind::Glob(Pattern::new("/admin/*").unwrap())
         );
 
         assert_eq!(route.methods.acceptable.len(), 2);

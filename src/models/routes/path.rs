@@ -2,12 +2,12 @@ use super::permission::Kind as PermissionKind;
 
 use crate::glob::analyzer::has_pattern;
 
-use std::num::ParseIntError;
+use glob::Pattern;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Kind {
-    Glob(String),
-    Exact(u16),
+    Glob(Pattern),
+    Exact(String),
     Any,
 }
 
@@ -23,20 +23,22 @@ impl Matcher {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum ErrorKind {
+    #[error("Invalid glob pattern: {0}")]
+    Glob(#[from] glob::PatternError),
+    #[error("Invalid path: {0}")]
+    Parse(String),
+}
+
 impl TryFrom<String> for Kind {
-    type Error = ParseIntError;
+    type Error = ErrorKind;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         if has_pattern(&value) {
-            Ok(Self::Glob(value))
+            Ok(Self::Glob(Pattern::new(&value)?))
         } else {
-            Ok(Self::Exact(value.parse()?))
+            Ok(Self::Exact(value))
         }
-    }
-}
-
-impl From<u16> for Kind {
-    fn from(value: u16) -> Self {
-        Self::Exact(value)
     }
 }
