@@ -51,6 +51,30 @@ impl Route {
         }
     }
 
+    pub fn host_matches(&self, host: impl AsRef<str>) -> bool {
+        self.hosts.matches(host)
+    }
+
+    pub fn method_matches(&self, method: impl AsRef<str>) -> bool {
+        self.methods.matches(method)
+    }
+
+    pub fn path_matches(&self, path: impl AsRef<str>) -> bool {
+        self.paths.matches(path)
+    }
+
+    pub fn port_matches(&self, port: u16) -> bool {
+        self.ports.matches(port)
+    }
+
+    pub fn port_matches_str(&self, port: impl AsRef<str>) -> bool {
+        self.ports.matches_str(port)
+    }
+
+    pub fn scheme_matches(&self, scheme: impl AsRef<str>) -> bool {
+        self.schemes.matches(scheme)
+    }
+
     pub fn builder() -> Builder {
         Builder::default()
     }
