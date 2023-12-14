@@ -8,7 +8,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    pub fn matches(&self, scheme: impl AsRef<str>) -> bool {
+    pub fn matches(self, scheme: impl AsRef<str>) -> bool {
         let scheme = scheme.as_ref().to_lowercase();
 
         match self {

@@ -21,10 +21,10 @@ impl Kind {
     pub fn matches(&self, path: impl AsRef<str>) -> bool {
         let path = path.as_ref();
 
-        let path = if path != "/" {
-            path.strip_suffix('/').unwrap_or(path)
-        } else {
+        let path = if path == "/" {
             path
+        } else {
+            path.strip_suffix('/').unwrap_or(path)
         };
 
         match self {

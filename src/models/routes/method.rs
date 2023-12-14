@@ -13,7 +13,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    pub fn matches(&self, method: impl AsRef<str>) -> bool {
+    pub fn matches(self, method: impl AsRef<str>) -> bool {
         let method = method.as_ref().to_lowercase();
 
         match self {
