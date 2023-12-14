@@ -54,3 +54,100 @@ impl Methods {
         !matched_none
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_matches() {
+        let methods = Methods::new([]);
+
+        assert!(methods.matches("get"));
+        assert!(methods.matches("GET"));
+        assert!(methods.matches("post"));
+        assert!(methods.matches("POST"));
+        assert!(methods.matches("put"));
+        assert!(methods.matches("PUT"));
+        assert!(methods.matches("patch"));
+        assert!(methods.matches("PATCH"));
+        assert!(methods.matches("delete"));
+        assert!(methods.matches("DELETE"));
+        assert!(methods.matches("head"));
+        assert!(methods.matches("HEAD"));
+        assert!(methods.matches("options"));
+        assert!(methods.matches("OPTIONS"));
+        assert!(!methods.matches("foo"));
+        assert!(!methods.matches("bar"));
+        assert!(!methods.matches("baz"));
+
+        let methods = Methods::new([
+            Matcher::new(PermissionKind::Acceptable, Kind::Get),
+            Matcher::new(PermissionKind::Acceptable, Kind::Post),
+            Matcher::new(PermissionKind::Acceptable, Kind::Put),
+            Matcher::new(PermissionKind::Acceptable, Kind::Patch),
+            Matcher::new(PermissionKind::Acceptable, Kind::Delete),
+        ]);
+
+        assert!(methods.matches("get"));
+        assert!(methods.matches("GET"));
+        assert!(methods.matches("post"));
+        assert!(methods.matches("POST"));
+        assert!(methods.matches("put"));
+        assert!(methods.matches("PUT"));
+        assert!(methods.matches("patch"));
+        assert!(methods.matches("PATCH"));
+        assert!(methods.matches("delete"));
+        assert!(methods.matches("DELETE"));
+        assert!(!methods.matches("head"));
+        assert!(!methods.matches("HEAD"));
+        assert!(!methods.matches("options"));
+        assert!(!methods.matches("OPTIONS"));
+        assert!(!methods.matches("foo"));
+        assert!(!methods.matches("bar"));
+        assert!(!methods.matches("baz"));
+
+        let methods = Methods::new([Matcher::new(PermissionKind::Acceptable, Kind::AnySupported)]);
+
+        assert!(methods.matches("get"));
+        assert!(methods.matches("GET"));
+        assert!(methods.matches("post"));
+        assert!(methods.matches("POST"));
+        assert!(methods.matches("put"));
+        assert!(methods.matches("PUT"));
+        assert!(methods.matches("patch"));
+        assert!(methods.matches("PATCH"));
+        assert!(methods.matches("delete"));
+        assert!(methods.matches("DELETE"));
+        assert!(methods.matches("head"));
+        assert!(methods.matches("HEAD"));
+        assert!(methods.matches("options"));
+        assert!(methods.matches("OPTIONS"));
+        assert!(!methods.matches("foo"));
+        assert!(!methods.matches("bar"));
+        assert!(!methods.matches("baz"));
+
+        let methods = Methods::new([
+            Matcher::new(PermissionKind::Acceptable, Kind::AnySupported),
+            Matcher::new(PermissionKind::Unacceptable, Kind::Head),
+        ]);
+
+        assert!(methods.matches("get"));
+        assert!(methods.matches("GET"));
+        assert!(methods.matches("post"));
+        assert!(methods.matches("POST"));
+        assert!(methods.matches("put"));
+        assert!(methods.matches("PUT"));
+        assert!(methods.matches("patch"));
+        assert!(methods.matches("PATCH"));
+        assert!(methods.matches("delete"));
+        assert!(methods.matches("DELETE"));
+        assert!(methods.matches("options"));
+        assert!(methods.matches("OPTIONS"));
+        assert!(!methods.matches("head"));
+        assert!(!methods.matches("HEAD"));
+        assert!(!methods.matches("foo"));
+        assert!(!methods.matches("bar"));
+        assert!(!methods.matches("baz"));
+    }
+}

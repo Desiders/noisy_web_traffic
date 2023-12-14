@@ -19,9 +19,17 @@ impl Kind {
     }
 
     pub fn matches(&self, path: impl AsRef<str>) -> bool {
+        let path = path.as_ref();
+
+        let path = if path != "/" {
+            path.strip_suffix('/').unwrap_or(path)
+        } else {
+            path
+        };
+
         match self {
-            Self::Glob(pattern) => pattern.matches(path.as_ref()),
-            Self::Exact(exact) => exact == path.as_ref(),
+            Self::Glob(pattern) => pattern.matches(path),
+            Self::Exact(exact) => exact == path,
             Self::Any => true,
         }
     }
@@ -36,5 +44,70 @@ pub struct Matcher {
 impl Matcher {
     pub const fn new(permission: PermissionKind, kind: Kind) -> Self {
         Self { permission, kind }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_matches() {
+        let path = Kind::exact("/foo/bar");
+
+        assert!(path.matches("/foo/bar"));
+        assert!(path.matches("/foo/bar/"));
+        assert!(!path.matches("/foo"));
+        assert!(!path.matches("/foo/"));
+        assert!(!path.matches("/foo/bar/baz"));
+        assert!(!path.matches("/foo/bar/baz/"));
+
+        let path = Kind::glob("/foo/*").unwrap();
+
+        assert!(path.matches("/foo/bar"));
+        assert!(path.matches("/foo/bar/"));
+        assert!(path.matches("/foo/bar/baz"));
+        assert!(path.matches("/foo/bar/baz/"));
+        assert!(!path.matches("/foo"));
+        assert!(!path.matches("/foo/"));
+
+        let path = Kind::glob("/foo/*/baz").unwrap();
+
+        assert!(path.matches("/foo/bar/baz"));
+        assert!(path.matches("/foo/bar/baz/"));
+        assert!(path.matches("/foo/a/baz"));
+        assert!(path.matches("/foo/a/baz/"));
+        assert!(!path.matches("/foo/bar"));
+        assert!(!path.matches("/foo/bar/"));
+        assert!(!path.matches("/foo/bar/bar"));
+        assert!(!path.matches("/foo/bar/bar/"));
+        assert!(!path.matches("/foo/a/bar"));
+        assert!(!path.matches("/foo/a/bar/"));
+
+        let path = Kind::glob("/foo/?/baz").unwrap();
+
+        assert!(path.matches("/foo/a/baz"));
+        assert!(path.matches("/foo/a/baz/"));
+        assert!(path.matches("/foo/b/baz"));
+        assert!(path.matches("/foo/b/baz/"));
+        assert!(!path.matches("/foo/bar/baz"));
+        assert!(!path.matches("/foo/bar/baz/"));
+        assert!(!path.matches("/foo/a/bar"));
+        assert!(!path.matches("/foo/a/bar/"));
+        assert!(!path.matches("/foo/b/bar"));
+        assert!(!path.matches("/foo/b/bar/"));
+
+        let path = Kind::exact("/");
+
+        assert!(path.matches("/"));
+        assert!(!path.matches("/foo"));
+        assert!(!path.matches("/foo/"));
+
+        let path = Kind::exact("");
+
+        assert!(path.matches(""));
+        assert!(!path.matches("/"));
+        assert!(!path.matches("/foo"));
+        assert!(!path.matches("/foo/"));
     }
 }

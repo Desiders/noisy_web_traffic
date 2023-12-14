@@ -54,3 +54,104 @@ impl Hosts {
         !matched_none
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_matches() {
+        let hosts = Hosts::new([]);
+
+        assert!(hosts.matches("example.com"));
+        assert!(hosts.matches("www.example.com"));
+        assert!(hosts.matches("api.example.com"));
+        assert!(hosts.matches("www.example.org"));
+        assert!(hosts.matches("api.example.org"));
+        assert!(hosts.matches("example"));
+        assert!(hosts.matches("example.org"));
+
+        let hosts = Hosts::new([
+            Matcher::new(
+                PermissionKind::Acceptable,
+                Kind::exact("example.com").unwrap(),
+            ),
+            Matcher::new(
+                PermissionKind::Acceptable,
+                Kind::glob("*.example.com").unwrap(),
+            ),
+        ]);
+
+        assert!(hosts.matches("example.com"));
+        assert!(hosts.matches("www.example.com"));
+        assert!(hosts.matches("api.example.com"));
+        assert!(hosts.matches(".example.com"));
+        assert!(!hosts.matches("www.example.org"));
+        assert!(!hosts.matches("api.example.org"));
+        assert!(!hosts.matches("example"));
+        assert!(!hosts.matches("example.org"));
+
+        let hosts = Hosts::new([
+            Matcher::new(
+                PermissionKind::Acceptable,
+                Kind::exact("example.com").unwrap(),
+            ),
+            Matcher::new(
+                PermissionKind::Acceptable,
+                Kind::glob("*.example.com").unwrap(),
+            ),
+            Matcher::new(
+                PermissionKind::Unacceptable,
+                Kind::exact("api.example.com").unwrap(),
+            ),
+        ]);
+
+        assert!(hosts.matches("example.com"));
+        assert!(hosts.matches("www.example.com"));
+        assert!(!hosts.matches("api.example.com"));
+        assert!(!hosts.matches("www.example.org"));
+        assert!(!hosts.matches("api.example.org"));
+        assert!(!hosts.matches("example"));
+        assert!(!hosts.matches("example.org"));
+
+        let hosts = Hosts::new([
+            Matcher::new(
+                PermissionKind::Acceptable,
+                Kind::exact("example.com").unwrap(),
+            ),
+            Matcher::new(
+                PermissionKind::Unacceptable,
+                Kind::glob("*.example.com").unwrap(),
+            ),
+        ]);
+
+        assert!(hosts.matches("example.com"));
+        assert!(!hosts.matches(".example.com"));
+        assert!(!hosts.matches("www.example.com"));
+        assert!(!hosts.matches("api.example.com"));
+        assert!(!hosts.matches("www.example.org"));
+        assert!(!hosts.matches("api.example.org"));
+        assert!(!hosts.matches("example"));
+        assert!(!hosts.matches("example.org"));
+
+        let hosts = Hosts::new([
+            Matcher::new(
+                PermissionKind::Acceptable,
+                Kind::exact("example.com").unwrap(),
+            ),
+            Matcher::new(
+                PermissionKind::Unacceptable,
+                Kind::glob("example.*").unwrap(),
+            ),
+        ]);
+
+        assert!(!hosts.matches("example.com"));
+        assert!(!hosts.matches("example.com."));
+        assert!(!hosts.matches("www.example.com"));
+        assert!(!hosts.matches("api.example.com"));
+        assert!(!hosts.matches("www.example.org"));
+        assert!(!hosts.matches("api.example.org"));
+        assert!(!hosts.matches("example"));
+        assert!(!hosts.matches("example.org"));
+    }
+}

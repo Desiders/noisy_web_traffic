@@ -54,3 +54,114 @@ impl Paths {
         !matched_none
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_matches() {
+        let paths = Paths::new([]);
+
+        assert!(paths.matches(""));
+        assert!(paths.matches("/"));
+        assert!(paths.matches("/foo/bar"));
+        assert!(paths.matches("/foo/bar/"));
+        assert!(paths.matches("/foo/bar/baz"));
+        assert!(paths.matches("/foo/bar/baz/"));
+        assert!(paths.matches("/foo"));
+        assert!(paths.matches("/foo/"));
+        assert!(paths.matches("/foo/bar/baz"));
+        assert!(paths.matches("/foo/bar/baz/"));
+
+        let paths = Paths::new([
+            Matcher::new(PermissionKind::Acceptable, Kind::exact("/foo/bar")),
+            Matcher::new(
+                PermissionKind::Acceptable,
+                Kind::glob("/foo/bar/*").unwrap(),
+            ),
+            Matcher::new(
+                PermissionKind::Acceptable,
+                Kind::glob("/foo/*/baz").unwrap(),
+            ),
+        ]);
+
+        assert!(paths.matches("/foo/bar"));
+        assert!(paths.matches("/foo/bar/"));
+        assert!(paths.matches("/foo/bar/baz"));
+        assert!(paths.matches("/foo/bar/baz/"));
+        assert!(paths.matches("/foo/a/baz"));
+        assert!(paths.matches("/foo/a/baz/"));
+        assert!(paths.matches("/foo/b/baz"));
+        assert!(paths.matches("/foo/b/baz/"));
+        assert!(!paths.matches("/foo"));
+        assert!(!paths.matches("/foo/"));
+        assert!(!paths.matches("/foot/bar/bar"));
+        assert!(!paths.matches("/foot/bar/bar/"));
+        assert!(!paths.matches("/foo/a/bar"));
+        assert!(!paths.matches("/foo/a/bar/"));
+
+        let paths = Paths::new([
+            Matcher::new(PermissionKind::Acceptable, Kind::exact("/foo/bar")),
+            Matcher::new(
+                PermissionKind::Acceptable,
+                Kind::glob("/foo/bar/*").unwrap(),
+            ),
+            Matcher::new(
+                PermissionKind::Unacceptable,
+                Kind::glob("/foo/*/baz").unwrap(),
+            ),
+        ]);
+
+        assert!(paths.matches("/foo/bar"));
+        assert!(paths.matches("/foo/bar/"));
+        assert!(paths.matches("/foo/bar/a"));
+        assert!(paths.matches("/foo/bar/a/"));
+        assert!(!paths.matches("/foo/bar/baz"));
+        assert!(!paths.matches("/foo/bar/baz/"));
+        assert!(!paths.matches("/foo/a/baz"));
+        assert!(!paths.matches("/foo/a/baz/"));
+        assert!(!paths.matches("/foo/b/baz"));
+        assert!(!paths.matches("/foo/b/baz/"));
+        assert!(!paths.matches("/foo"));
+        assert!(!paths.matches("/foo/"));
+        assert!(!paths.matches("/foot/bar/bar"));
+        assert!(!paths.matches("/foot/bar/bar/"));
+        assert!(!paths.matches("/foo/a/bar"));
+        assert!(!paths.matches("/foo/a/bar/"));
+
+        let paths = Paths::new([Matcher::new(
+            PermissionKind::Acceptable,
+            Kind::glob("/*/bar").unwrap(),
+        )]);
+
+        assert!(paths.matches("/foo/bar"));
+        assert!(paths.matches("/foo/bar/"));
+        assert!(paths.matches("/bar/bar"));
+        assert!(paths.matches("/bar/bar/"));
+        assert!(!paths.matches("/foo"));
+        assert!(!paths.matches("/foo/"));
+        assert!(!paths.matches("/foo/bar/baz"));
+        assert!(!paths.matches("/foo/bar/baz/"));
+        assert!(!paths.matches("foo/bar"));
+        assert!(!paths.matches("foo/bar/"));
+        assert!(!paths.matches("/bar"));
+        assert!(!paths.matches("/bar/"));
+
+        let paths = Paths::new([Matcher::new(
+            PermissionKind::Acceptable,
+            Kind::glob("/*/bar/*").unwrap(),
+        )]);
+
+        assert!(paths.matches("/foo/bar/baz"));
+        assert!(paths.matches("/foo/bar/baz/"));
+        assert!(paths.matches("/bar/bar/baz"));
+        assert!(paths.matches("/bar/bar/baz/"));
+        assert!(!paths.matches("/foo"));
+        assert!(!paths.matches("/foo/"));
+        assert!(!paths.matches("/foo/bar"));
+        assert!(!paths.matches("/foo/bar/"));
+        assert!(!paths.matches("/bar"));
+        assert!(!paths.matches("/bar/"));
+    }
+}

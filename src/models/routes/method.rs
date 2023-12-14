@@ -24,7 +24,15 @@ impl Kind {
             Kind::Delete => method == "delete",
             Kind::Head => method == "head",
             Kind::Options => method == "options",
-            Kind::AnySupported => true,
+            Kind::AnySupported => {
+                method == "get"
+                    || method == "post"
+                    || method == "put"
+                    || method == "patch"
+                    || method == "delete"
+                    || method == "head"
+                    || method == "options"
+            }
         }
     }
 }
@@ -61,5 +69,41 @@ impl TryFrom<String> for Kind {
             "options" => Ok(Self::Options),
             _ => Err(UnsupportedMethodError(value)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_matches() {
+        let method = Kind::Get;
+
+        assert!(method.matches("get"));
+        assert!(method.matches("GET"));
+        assert!(method.matches("GeT"));
+        assert!(!method.matches("post"));
+
+        let method = Kind::Post;
+
+        assert!(method.matches("post"));
+        assert!(method.matches("POST"));
+        assert!(method.matches("PoSt"));
+        assert!(!method.matches("get"));
+
+        let method = Kind::AnySupported;
+
+        assert!(method.matches("get"));
+        assert!(method.matches("GET"));
+        assert!(method.matches("GeT"));
+        assert!(method.matches("post"));
+        assert!(method.matches("POST"));
+        assert!(method.matches("PoSt"));
+        assert!(method.matches("put"));
+        assert!(method.matches("patch"));
+        assert!(method.matches("delete"));
+        assert!(method.matches("head"));
+        assert!(method.matches("options"));
     }
 }

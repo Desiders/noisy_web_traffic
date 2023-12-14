@@ -66,3 +66,53 @@ impl Ports {
         !matched_none
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_matches() {
+        let ports = Ports::new([]);
+
+        assert!(ports.matches(80));
+        assert!(ports.matches_str("80"));
+        assert!(ports.matches(8080));
+        assert!(ports.matches_str("8080"));
+
+        let ports = Ports::new(vec![
+            Matcher::new(PermissionKind::Acceptable, Kind::exact(80)),
+            Matcher::new(PermissionKind::Acceptable, Kind::glob("8?8?").unwrap()),
+            Matcher::new(PermissionKind::Unacceptable, Kind::exact(8080)),
+        ]);
+
+        assert!(ports.matches(80));
+        assert!(ports.matches_str("80"));
+        assert!(ports.matches(8081));
+        assert!(ports.matches_str("8081"));
+        assert!(ports.matches(8180));
+        assert!(ports.matches_str("8180"));
+        assert!(!ports.matches(8071));
+        assert!(!ports.matches_str("8071"));
+        assert!(!ports.matches(8080));
+        assert!(!ports.matches_str("8080"));
+
+        let ports = Ports::new(vec![
+            Matcher::new(PermissionKind::Acceptable, Kind::exact(80)),
+            Matcher::new(PermissionKind::Acceptable, Kind::glob("8?8?").unwrap()),
+            Matcher::new(PermissionKind::Unacceptable, Kind::exact(8080)),
+            Matcher::new(PermissionKind::Unacceptable, Kind::exact(80)),
+        ]);
+
+        assert!(ports.matches(8081));
+        assert!(ports.matches_str("8081"));
+        assert!(ports.matches(8180));
+        assert!(ports.matches_str("8180"));
+        assert!(!ports.matches(80));
+        assert!(!ports.matches_str("80"));
+        assert!(!ports.matches(8071));
+        assert!(!ports.matches_str("8071"));
+        assert!(!ports.matches(8080));
+        assert!(!ports.matches_str("8080"));
+    }
+}

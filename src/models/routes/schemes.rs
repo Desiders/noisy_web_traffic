@@ -54,3 +54,62 @@ impl Schemes {
         !matched_none
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_matches() {
+        let schemes = Schemes::new([]);
+
+        assert!(schemes.matches("http"));
+        assert!(schemes.matches("HTTP"));
+        assert!(schemes.matches("HtTP"));
+        assert!(schemes.matches("https"));
+        assert!(schemes.matches("HTTPS"));
+        assert!(schemes.matches("HtTPS"));
+        assert!(!schemes.matches("ftp"));
+        assert!(!schemes.matches("FTP"));
+        assert!(!schemes.matches("FtP"));
+        assert!(!schemes.matches("qwe"));
+        assert!(!schemes.matches("QWE"));
+        assert!(!schemes.matches("QwE"));
+
+        let schemes = Schemes::new([
+            Matcher::new(PermissionKind::Acceptable, Kind::Http),
+            Matcher::new(PermissionKind::Acceptable, Kind::Https),
+        ]);
+
+        assert!(schemes.matches("http"));
+        assert!(schemes.matches("HTTP"));
+        assert!(schemes.matches("HtTP"));
+        assert!(schemes.matches("https"));
+        assert!(schemes.matches("HTTPS"));
+        assert!(schemes.matches("HtTPS"));
+        assert!(!schemes.matches("ftp"));
+        assert!(!schemes.matches("FTP"));
+        assert!(!schemes.matches("FtP"));
+        assert!(!schemes.matches("qwe"));
+        assert!(!schemes.matches("QWE"));
+        assert!(!schemes.matches("QwE"));
+
+        let schemes = Schemes::new([
+            Matcher::new(PermissionKind::Acceptable, Kind::Http),
+            Matcher::new(PermissionKind::Unacceptable, Kind::Https),
+        ]);
+
+        assert!(schemes.matches("http"));
+        assert!(schemes.matches("HTTP"));
+        assert!(schemes.matches("HtTP"));
+        assert!(!schemes.matches("https"));
+        assert!(!schemes.matches("HTTPS"));
+        assert!(!schemes.matches("HtTPS"));
+        assert!(!schemes.matches("ftp"));
+        assert!(!schemes.matches("FTP"));
+        assert!(!schemes.matches("FtP"));
+        assert!(!schemes.matches("qwe"));
+        assert!(!schemes.matches("QWE"));
+        assert!(!schemes.matches("QwE"));
+    }
+}

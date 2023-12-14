@@ -39,3 +39,70 @@ impl Matcher {
         Self { permission, kind }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_matches() {
+        let host = Kind::exact("example.com").unwrap();
+
+        assert!(host.matches("example.com"));
+        assert!(!host.matches("example.org"));
+        assert!(!host.matches("example"));
+
+        let host = Kind::glob("*.example.com").unwrap();
+
+        assert!(host.matches("www.example.com"));
+        assert!(host.matches("api.example.com"));
+        assert!(host.matches(".example.com"));
+        assert!(!host.matches("example.com"));
+        assert!(!host.matches("example.org"));
+        assert!(!host.matches("example"));
+
+        let host = Kind::glob("*.example.*").unwrap();
+
+        assert!(host.matches("www.example.com"));
+        assert!(host.matches("www.example.org"));
+        assert!(host.matches("api.example.com"));
+        assert!(host.matches("api.example.org"));
+        assert!(host.matches(".example.com"));
+        assert!(!host.matches("example.com"));
+        assert!(!host.matches("example.org"));
+        assert!(!host.matches("example"));
+
+        let host = Kind::Any;
+
+        assert!(host.matches("example.com"));
+        assert!(host.matches("example.org"));
+        assert!(host.matches("example"));
+
+        let host = Kind::glob("ex?mple.com").unwrap();
+
+        assert!(host.matches("example.com"));
+        assert!(host.matches("exbmple.com"));
+        assert!(host.matches("excmple.com"));
+        assert!(!host.matches("exmple.com"));
+        assert!(!host.matches("example.org"));
+        assert!(!host.matches("example"));
+
+        let host = Kind::glob("ex[ab]mple.com").unwrap();
+
+        assert!(host.matches("example.com"));
+        assert!(host.matches("exbmple.com"));
+        assert!(!host.matches("excmple.com"));
+        assert!(!host.matches("exmple.com"));
+        assert!(!host.matches("example.org"));
+        assert!(!host.matches("example"));
+
+        let host = Kind::glob("ex[!ab]mple.com").unwrap();
+
+        assert!(!host.matches("example.com"));
+        assert!(!host.matches("exbmple.com"));
+        assert!(host.matches("excmple.com"));
+        assert!(!host.matches("exmple.com"));
+        assert!(!host.matches("example.org"));
+        assert!(!host.matches("example"));
+    }
+}

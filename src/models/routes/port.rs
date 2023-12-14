@@ -51,3 +51,60 @@ impl Matcher {
         Self { permission, kind }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_matches() {
+        let port = Kind::exact(80);
+
+        assert!(port.matches(80));
+        assert!(port.matches_str("80"));
+        assert!(!port.matches(8080));
+        assert!(!port.matches_str("8080"));
+
+        let port = Kind::exact_str("80").unwrap();
+
+        assert!(port.matches(80));
+        assert!(port.matches_str("80"));
+        assert!(!port.matches(8080));
+        assert!(!port.matches_str("8080"));
+
+        let port = Kind::glob("8?8?").unwrap();
+
+        assert!(port.matches(8080));
+        assert!(port.matches_str("8080"));
+        assert!(port.matches(8181));
+        assert!(port.matches_str("8181"));
+        assert!(!port.matches(80));
+        assert!(!port.matches_str("80"));
+        assert!(!port.matches(8071));
+        assert!(!port.matches_str("8071"));
+
+        let port = Kind::glob("1*1*").unwrap();
+
+        assert!(port.matches(1010));
+        assert!(port.matches_str("1010"));
+        assert!(port.matches(1111));
+        assert!(port.matches_str("1111"));
+        assert!(port.matches(10010));
+        assert!(port.matches_str("10010"));
+        assert!(!port.matches(80));
+        assert!(!port.matches_str("80"));
+
+        let port = Kind::glob("80*").unwrap();
+
+        assert!(port.matches(8080));
+        assert!(port.matches_str("8080"));
+        assert!(port.matches(8081));
+        assert!(port.matches_str("8081"));
+        assert!(port.matches(80));
+        assert!(port.matches_str("80"));
+        assert!(port.matches(808));
+        assert!(port.matches_str("808"));
+        assert!(!port.matches(11));
+        assert!(!port.matches_str("11"));
+    }
+}

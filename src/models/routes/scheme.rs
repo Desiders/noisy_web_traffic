@@ -14,7 +14,7 @@ impl Kind {
         match self {
             Kind::Http => scheme == "http",
             Kind::Https => scheme == "https",
-            Kind::AnySupported => true,
+            Kind::AnySupported => scheme == "http" || scheme == "https",
         }
     }
 }
@@ -46,5 +46,46 @@ impl TryFrom<String> for Kind {
             "https" => Ok(Self::Https),
             _ => Err(UnsupportedSchemeError(value)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_matches() {
+        let scheme = Kind::Http;
+
+        assert!(scheme.matches("http"));
+        assert!(scheme.matches("HTTP"));
+        assert!(scheme.matches("HtTP"));
+        assert!(!scheme.matches("https"));
+        assert!(!scheme.matches("HTTPS"));
+        assert!(!scheme.matches("HtTPs"));
+
+        let scheme = Kind::Https;
+
+        assert!(scheme.matches("https"));
+        assert!(scheme.matches("HTTPS"));
+        assert!(scheme.matches("HtTPs"));
+        assert!(!scheme.matches("http"));
+        assert!(!scheme.matches("HTTP"));
+        assert!(!scheme.matches("HtTP"));
+
+        let scheme = Kind::AnySupported;
+
+        assert!(scheme.matches("http"));
+        assert!(scheme.matches("HTTP"));
+        assert!(scheme.matches("HtTP"));
+        assert!(scheme.matches("https"));
+        assert!(scheme.matches("HTTPS"));
+        assert!(scheme.matches("HtTPs"));
+        assert!(!scheme.matches("ftp"));
+        assert!(!scheme.matches("FTP"));
+        assert!(!scheme.matches("FtP"));
+        assert!(!scheme.matches("qwe"));
+        assert!(!scheme.matches("QWE"));
+        assert!(!scheme.matches("QwE"));
     }
 }

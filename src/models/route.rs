@@ -150,3 +150,117 @@ impl Builder {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::models::routes::permission::Kind as PermissionKind;
+
+    #[test]
+    fn test_route_builder() {
+        let route = Route::builder()
+            .host(host::Matcher::new(
+                PermissionKind::Acceptable,
+                host::Kind::exact("example.com").unwrap(),
+            ))
+            .method(method::Matcher::new(
+                PermissionKind::Acceptable,
+                method::Kind::Get,
+            ))
+            .path(path::Matcher::new(
+                PermissionKind::Acceptable,
+                path::Kind::exact("/"),
+            ))
+            .port(port::Matcher::new(
+                PermissionKind::Acceptable,
+                port::Kind::exact(80),
+            ))
+            .scheme(scheme::Matcher::new(
+                PermissionKind::Acceptable,
+                scheme::Kind::Http,
+            ))
+            .build();
+
+        assert_eq!(route.hosts.acceptable.len(), 1);
+        assert_eq!(
+            route.hosts.acceptable[0],
+            host::Kind::exact("example.com").unwrap()
+        );
+
+        assert_eq!(route.methods.acceptable.len(), 1);
+        assert_eq!(route.methods.acceptable[0], method::Kind::Get);
+
+        assert_eq!(route.paths.acceptable.len(), 1);
+        assert_eq!(route.paths.acceptable[0], path::Kind::exact("/"));
+
+        assert_eq!(route.ports.acceptable.len(), 1);
+        assert_eq!(route.ports.acceptable[0], port::Kind::exact(80));
+
+        assert_eq!(route.schemes.acceptable.len(), 1);
+        assert_eq!(route.schemes.acceptable[0], scheme::Kind::Http);
+
+        let route = Route::builder().build();
+
+        assert_eq!(route.hosts.acceptable.len(), 1);
+        assert_eq!(route.hosts.acceptable[0], host::Kind::Any);
+
+        assert_eq!(route.methods.acceptable.len(), 1);
+        assert_eq!(route.methods.acceptable[0], method::Kind::AnySupported);
+
+        assert_eq!(route.paths.acceptable.len(), 1);
+        assert_eq!(route.paths.acceptable[0], path::Kind::Any);
+
+        assert_eq!(route.ports.acceptable.len(), 1);
+        assert_eq!(route.ports.acceptable[0], port::Kind::Any);
+
+        assert_eq!(route.schemes.acceptable.len(), 1);
+        assert_eq!(route.schemes.acceptable[0], scheme::Kind::AnySupported);
+
+        let route = Route::builder()
+            .host(host::Matcher::new(
+                PermissionKind::Acceptable,
+                host::Kind::exact("example.com").unwrap(),
+            ))
+            .host(host::Matcher::new(
+                PermissionKind::Unacceptable,
+                host::Kind::exact("example2.org").unwrap(),
+            ))
+            .build();
+
+        assert_eq!(route.hosts.acceptable.len(), 1);
+        assert_eq!(route.hosts.unacceptable.len(), 1);
+        assert_eq!(
+            route.hosts.acceptable[0],
+            host::Kind::exact("example.com").unwrap()
+        );
+        assert_eq!(
+            route.hosts.unacceptable[0],
+            host::Kind::exact("example2.org").unwrap()
+        );
+
+        let route = Route::builder()
+            .hosts([
+                host::Matcher::new(
+                    PermissionKind::Acceptable,
+                    host::Kind::exact("example.com").unwrap(),
+                ),
+                host::Matcher::new(
+                    PermissionKind::Unacceptable,
+                    host::Kind::exact("example2.org").unwrap(),
+                ),
+            ])
+            .build();
+
+        assert_eq!(route.hosts.acceptable.len(), 1);
+        assert_eq!(route.hosts.unacceptable.len(), 1);
+        assert_eq!(
+            route.hosts.acceptable[0],
+            host::Kind::exact("example.com").unwrap()
+        );
+        assert_eq!(
+            route.hosts.unacceptable[0],
+            host::Kind::exact("example2.org").unwrap()
+        );
+    }
+}
