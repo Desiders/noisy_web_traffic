@@ -14,8 +14,16 @@ impl Kind {
         Ok(Self::Glob(Pattern::new(pattern.as_ref())?))
     }
 
-    pub fn exact(host: impl Into<String>) -> Self {
-        Self::Exact(host.into())
+    pub fn exact(path: impl Into<String>) -> Self {
+        Self::Exact(path.into())
+    }
+
+    pub fn matches(&self, path: impl AsRef<str>) -> bool {
+        match self {
+            Self::Glob(pattern) => pattern.matches(path.as_ref()),
+            Self::Exact(exact) => exact == path.as_ref(),
+            Self::Any => true,
+        }
     }
 }
 

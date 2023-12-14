@@ -22,6 +22,22 @@ impl Kind {
     pub fn exact_str(port: impl AsRef<str>) -> Result<Self, ParseIntError> {
         Ok(Self::Exact(port.as_ref().parse()?))
     }
+
+    pub fn matches(&self, port: u16) -> bool {
+        match self {
+            Self::Glob(pattern) => pattern.matches(&port.to_string()),
+            Self::Exact(exact) => exact == &port,
+            Self::Any => true,
+        }
+    }
+
+    pub fn matches_str(&self, port: impl AsRef<str>) -> bool {
+        match self {
+            Self::Glob(pattern) => pattern.matches(port.as_ref()),
+            Self::Exact(exact) => exact.to_string() == port.as_ref(),
+            Self::Any => true,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

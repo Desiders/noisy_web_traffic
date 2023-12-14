@@ -7,6 +7,18 @@ pub enum Kind {
     AnySupported, // This is a special case that matches all schemes above
 }
 
+impl Kind {
+    pub fn matches(&self, scheme: impl AsRef<str>) -> bool {
+        let scheme = scheme.as_ref().to_lowercase();
+
+        match self {
+            Kind::Http => scheme == "http",
+            Kind::Https => scheme == "https",
+            Kind::AnySupported => true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Matcher {
     pub permission: PermissionKind,

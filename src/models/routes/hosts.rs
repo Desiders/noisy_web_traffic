@@ -39,4 +39,18 @@ impl Hosts {
             }
         }
     }
+
+    pub fn matches(&self, host: impl AsRef<str>) -> bool {
+        let host = host.as_ref();
+
+        let matched_any = self.acceptable.iter().any(|kind| kind.matches(host));
+
+        if !matched_any {
+            return false;
+        }
+
+        let matched_none = self.unacceptable.iter().any(|kind| kind.matches(host));
+
+        !matched_none
+    }
 }

@@ -12,6 +12,23 @@ pub enum Kind {
     AnySupported, // This is a special case that matches all methods above
 }
 
+impl Kind {
+    pub fn matches(&self, method: impl AsRef<str>) -> bool {
+        let method = method.as_ref().to_lowercase();
+
+        match self {
+            Kind::Get => method == "get",
+            Kind::Post => method == "post",
+            Kind::Put => method == "put",
+            Kind::Patch => method == "patch",
+            Kind::Delete => method == "delete",
+            Kind::Head => method == "head",
+            Kind::Options => method == "options",
+            Kind::AnySupported => true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Matcher {
     pub permission: PermissionKind,

@@ -39,4 +39,18 @@ impl Paths {
             }
         }
     }
+
+    pub fn matches(&self, path: impl AsRef<str>) -> bool {
+        let path = path.as_ref();
+
+        let matched_any = self.acceptable.iter().any(|kind| kind.matches(path));
+
+        if !matched_any {
+            return false;
+        }
+
+        let matched_none = self.unacceptable.iter().any(|kind| kind.matches(path));
+
+        !matched_none
+    }
 }

@@ -39,4 +39,30 @@ impl Ports {
             }
         }
     }
+
+    pub fn matches(&self, port: u16) -> bool {
+        let matched_any = self.acceptable.iter().any(|kind| kind.matches(port));
+
+        if !matched_any {
+            return false;
+        }
+
+        let matched_none = self.unacceptable.iter().any(|kind| kind.matches(port));
+
+        !matched_none
+    }
+
+    pub fn matches_str(&self, port: impl AsRef<str>) -> bool {
+        let port = port.as_ref();
+
+        let matched_any = self.acceptable.iter().any(|kind| kind.matches_str(port));
+
+        if !matched_any {
+            return false;
+        }
+
+        let matched_none = self.unacceptable.iter().any(|kind| kind.matches_str(port));
+
+        !matched_none
+    }
 }

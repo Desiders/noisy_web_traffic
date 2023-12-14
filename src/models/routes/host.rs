@@ -18,6 +18,14 @@ impl Kind {
     pub fn exact(host: impl AsRef<str>) -> Result<Self, ParseError> {
         Ok(Self::Exact(Host::parse(host.as_ref())?))
     }
+
+    pub fn matches(&self, host: impl AsRef<str>) -> bool {
+        match self {
+            Self::Glob(pattern) => pattern.matches(host.as_ref()),
+            Self::Exact(exact) => exact.to_string() == host.as_ref(),
+            Self::Any => true,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -39,4 +39,18 @@ impl Methods {
             }
         }
     }
+
+    pub fn matches(&self, method: impl AsRef<str>) -> bool {
+        let method = method.as_ref();
+
+        let matched_any = self.acceptable.iter().any(|kind| kind.matches(method));
+
+        if !matched_any {
+            return false;
+        }
+
+        let matched_none = self.unacceptable.iter().any(|kind| kind.matches(method));
+
+        !matched_none
+    }
 }

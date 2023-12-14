@@ -39,4 +39,18 @@ impl Schemes {
             }
         }
     }
+
+    pub fn matches(&self, scheme: impl AsRef<str>) -> bool {
+        let scheme = scheme.as_ref();
+
+        let matched_any = self.acceptable.iter().any(|kind| kind.matches(scheme));
+
+        if !matched_any {
+            return false;
+        }
+
+        let matched_none = self.unacceptable.iter().any(|kind| kind.matches(scheme));
+
+        !matched_none
+    }
 }
