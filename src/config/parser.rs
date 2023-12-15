@@ -1,95 +1,124 @@
 use crate::models::{
     route::Route,
-    routes::{host, method, path, permission::Kind as PermissionKind, port, scheme},
+    routes::{
+        host,
+        method::{self, UnsupportedMethodError},
+        path,
+        permission::Kind as PermissionKind,
+        port,
+        scheme::{self, UnsupportedSchemeError},
+    },
     rules::Rules,
 };
 
+use glob::PatternError;
+use std::num::ParseIntError;
+use toml::{map::Map, Value};
 use tracing::{event, instrument, Level};
 
+/// Error kind for [`parse_rules_from_toml`].
+/// # Notes
+/// This error kind is used to indicate which rule is invalid and why it is invalid.
 #[derive(Debug, thiserror::Error)]
 pub enum ErrorKind {
     #[error("Parse toml error: {0}")]
     ParseToml(#[from] toml::de::Error),
 
     #[error("Config must be a table, found {0}")]
-    ConfigMustBeTable(toml::Value),
+    ConfigMustBeTable(Value),
     #[error("Routes not found in table: {0}")]
-    RoutesNotFound(toml::map::Map<String, toml::Value>),
+    RoutesNotFound(Map<String, Value>),
     #[error("Routes must be a table, found {0}")]
-    RoutesMustBeTable(toml::Value),
+    RoutesMustBeTable(Value),
 
     #[error("Hosts must be a table, found {0}")]
-    HostsMustBeTable(toml::Value),
+    HostsMustBeTable(Value),
     #[error("Hosts must be an array, found {0}")]
-    HostsMustBeArray(toml::Value),
+    HostsMustBeArray(Value),
     #[error("Host must be a table, found {0}")]
-    HostMustBeTable(toml::Value),
+    HostMustBeTable(Value),
     #[error("Host value must be a string, found {0}")]
-    HostValueMustBeString(toml::Value),
-    #[error(transparent)]
-    Host(#[from] host::ErrorKind),
+    HostExactMustBeString(Value),
+    #[error("Host glob must be a string, found {0}")]
+    HostGlobMustBeString(Value),
+    #[error("Host glob pattern error: {0}")]
+    HostGlobPattern(PatternError),
+    #[error("Host parse error: {0}")]
+    HostParseError(#[from] url::ParseError),
 
     #[error("Methods must be a table, found {0}")]
-    MethodsMustBeTable(toml::Value),
+    MethodsMustBeTable(Value),
     #[error("Methods must be an array, found {0}")]
-    MethodsMustBeArray(toml::Value),
+    MethodsMustBeArray(Value),
     #[error("Method must be a table, found {0}")]
-    MethodMustBeTable(toml::Value),
+    MethodMustBeTable(Value),
     #[error("Method value must be a string, found {0}")]
-    MethodValueMustBeString(toml::Value),
+    MethodExactMustBeString(Value),
     #[error(transparent)]
-    UnsupportedMethod(#[from] method::UnsupportedMethodError),
+    UnsupportedMethod(#[from] UnsupportedMethodError),
 
     #[error("Schemes must be a table, found {0}")]
-    SchemesMustBeTable(toml::Value),
+    SchemesMustBeTable(Value),
     #[error("Schemes must be an array, found {0}")]
-    SchemesMustBeArray(toml::Value),
+    SchemesMustBeArray(Value),
     #[error("Scheme must be a table, found {0}")]
-    SchemeMustBeTable(toml::Value),
+    SchemeMustBeTable(Value),
     #[error("Scheme value must be a string, found {0}")]
-    SchemeValueMustBeString(toml::Value),
+    SchemeExactMustBeString(Value),
     #[error(transparent)]
-    UnsupportedScheme(#[from] scheme::UnsupportedSchemeError),
+    UnsupportedScheme(#[from] UnsupportedSchemeError),
 
     #[error("Ports must be a table, found {0}")]
-    PortsMustBeTable(toml::Value),
+    PortsMustBeTable(Value),
     #[error("Ports must be an array, found {0}")]
-    PortsMustBeArray(toml::Value),
+    PortsMustBeArray(Value),
+    #[error("Port glob must be a string, found {0}")]
+    PortGlobMustBeString(Value),
+    #[error("Port glob pattern error: {0}")]
+    PortGlobPattern(PatternError),
+    #[error("Port value parse error: {0}")]
+    PortExactParseError(ParseIntError),
     #[error("Port must be a table, found {0}")]
-    PortMustBeTable(toml::Value),
-    #[error("Port value must be a string or an int, found {0}")]
-    PortValueMustBeStringOrInt(toml::Value),
-    #[error(transparent)]
-    Port(#[from] port::ErrorKind),
+    PortMustBeTable(Value),
+    #[error("Port value must be an int or a string that represents an int, found {0}")]
+    PortExactMustBeStringOrInt(Value),
 
     #[error("Paths must be a table, found {0}")]
-    PathsMustBeTable(toml::Value),
+    PathsMustBeTable(Value),
     #[error("Paths must be an array, found {0}")]
-    PathsMustBeArray(toml::Value),
+    PathsMustBeArray(Value),
+    #[error("Path glob pattern error: {0}")]
+    PathGlobPattern(PatternError),
+    #[error("Path glob must be a string, found {0}")]
+    PathGlobMustBeString(Value),
     #[error("Path must be a table, found {0}")]
-    PathMustBeTable(toml::Value),
+    PathMustBeTable(Value),
     #[error("Path value must be a string, found {0}")]
-    PathValueMustBeString(toml::Value),
-    #[error(transparent)]
-    Path(#[from] path::ErrorKind),
+    PathExactMustBeString(Value),
 }
 
+/// Parse rules from toml
+/// # Arguments
+/// * `raw` - Raw toml string
+/// # Returns
+/// Returns [`Rules`] if parsing is successful and all rules are valid, otherwise returns [`ErrorKind`].
+/// # Panics
+/// If the port number is not between 0 and 65535
 #[instrument(skip_all)]
 pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
     event!(Level::DEBUG, "Parse rules from toml");
 
-    let value = raw.parse::<toml::Value>()?;
-    let table = match value.as_table() {
-        Some(table) => table,
-        None => return Err(ErrorKind::ConfigMustBeTable(value)),
+    let value = raw.parse::<Value>()?;
+    let Some(table) = value.as_table() else {
+        return Err(ErrorKind::ConfigMustBeTable(value));
     };
 
     let routes = match table.get("routes") {
         Some(routes) => match routes.as_table() {
             Some(routes) => routes,
-            None => return Err(ErrorKind::RoutesMustBeTable(routes.to_owned())),
+            None => return Err(ErrorKind::RoutesMustBeTable(routes.clone())),
         },
-        None => return Err(ErrorKind::RoutesNotFound(table.to_owned())),
+        None => return Err(ErrorKind::RoutesNotFound(table.clone())),
     };
 
     let mut rules_builder = Rules::builder();
@@ -100,42 +129,61 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
         Some(hosts) => {
             event!(Level::TRACE, "Parse hosts");
 
-            let hosts = match hosts.as_table() {
-                Some(hosts) => hosts,
-                None => return Err(ErrorKind::HostsMustBeTable(hosts.to_owned())),
+            let Some(hosts) = hosts.as_table() else {
+                return Err(ErrorKind::HostsMustBeTable(hosts.clone()));
             };
 
             match hosts.get("acceptable") {
                 Some(acceptable) => {
                     event!(Level::TRACE, "Parse acceptable hosts");
 
-                    let acceptable = match acceptable.as_array() {
-                        Some(acceptable) => acceptable,
-                        None => return Err(ErrorKind::HostsMustBeArray(acceptable.to_owned())),
+                    let Some(acceptable) = acceptable.as_array() else {
+                        return Err(ErrorKind::HostsMustBeArray(acceptable.clone()));
                     };
 
                     for host in acceptable {
                         match host.as_table() {
                             Some(host) => {
-                                if let Some(value) = host.get("value") {
-                                    match value.as_str() {
+                                if let Some(glob) = host.get("glob") {
+                                    match glob.as_str() {
                                         Some(host) => {
                                             route_builder = route_builder.host(host::Matcher::new(
                                                 PermissionKind::Acceptable,
-                                                host::Kind::try_from(host.to_owned())?,
+                                                host::Kind::glob(host)
+                                                    .map_err(ErrorKind::HostGlobPattern)?,
+                                            ));
+
+                                            continue;
+                                        }
+                                        None => {
+                                            return Err(ErrorKind::HostGlobMustBeString(
+                                                glob.clone(),
+                                            ))
+                                        }
+                                    }
+                                }
+
+                                event!(Level::TRACE, "Host glob not found");
+
+                                if let Some(exact) = host.get("exact") {
+                                    match exact.as_str() {
+                                        Some(host) => {
+                                            route_builder = route_builder.host(host::Matcher::new(
+                                                PermissionKind::Acceptable,
+                                                host::Kind::exact(host)?,
                                             ));
                                         }
                                         None => {
-                                            return Err(ErrorKind::HostValueMustBeString(
-                                                value.to_owned(),
+                                            return Err(ErrorKind::HostExactMustBeString(
+                                                exact.clone(),
                                             ))
                                         }
                                     }
                                 } else {
-                                    event!(Level::TRACE, "Host value not found");
+                                    event!(Level::TRACE, "Host exact not found");
                                 }
                             }
-                            None => return Err(ErrorKind::HostMustBeTable(host.to_owned())),
+                            None => return Err(ErrorKind::HostMustBeTable(host.clone())),
                         }
                     }
                 }
@@ -148,33 +196,53 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                 Some(unacceptable) => {
                     event!(Level::TRACE, "Parse unacceptable hosts");
 
-                    let unacceptable = match unacceptable.as_array() {
-                        Some(unacceptable) => unacceptable,
-                        None => return Err(ErrorKind::HostsMustBeArray(unacceptable.to_owned())),
+                    let Some(unacceptable) = unacceptable.as_array() else {
+                        return Err(ErrorKind::HostsMustBeArray(unacceptable.clone()));
                     };
 
                     for host in unacceptable {
                         match host.as_table() {
                             Some(host) => {
-                                if let Some(value) = host.get("value") {
-                                    match value.as_str() {
+                                if let Some(glob) = host.get("glob") {
+                                    match glob.as_str() {
                                         Some(host) => {
                                             route_builder = route_builder.host(host::Matcher::new(
                                                 PermissionKind::Unacceptable,
-                                                host::Kind::try_from(host.to_owned())?,
+                                                host::Kind::glob(host)
+                                                    .map_err(ErrorKind::HostGlobPattern)?,
+                                            ));
+
+                                            continue;
+                                        }
+                                        None => {
+                                            return Err(ErrorKind::HostGlobMustBeString(
+                                                glob.clone(),
+                                            ))
+                                        }
+                                    }
+                                }
+
+                                event!(Level::TRACE, "Host glob not found");
+
+                                if let Some(exact) = host.get("exact") {
+                                    match exact.as_str() {
+                                        Some(host) => {
+                                            route_builder = route_builder.host(host::Matcher::new(
+                                                PermissionKind::Unacceptable,
+                                                host::Kind::exact(host)?,
                                             ));
                                         }
                                         None => {
-                                            return Err(ErrorKind::HostValueMustBeString(
-                                                value.to_owned(),
+                                            return Err(ErrorKind::HostExactMustBeString(
+                                                exact.clone(),
                                             ))
                                         }
                                     }
                                 } else {
-                                    event!(Level::TRACE, "Host value not found");
+                                    event!(Level::TRACE, "Host exact not found");
                                 }
                             }
-                            None => return Err(ErrorKind::HostMustBeTable(host.to_owned())),
+                            None => return Err(ErrorKind::HostMustBeTable(host.clone())),
                         }
                     }
                 }
@@ -192,25 +260,23 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
         Some(methods) => {
             event!(Level::TRACE, "Parse methods");
 
-            let methods = match methods.as_table() {
-                Some(methods) => methods,
-                None => return Err(ErrorKind::MethodsMustBeTable(methods.to_owned())),
+            let Some(methods) = methods.as_table() else {
+                return Err(ErrorKind::MethodsMustBeTable(methods.clone()));
             };
 
             match methods.get("acceptable") {
                 Some(acceptable) => {
                     event!(Level::TRACE, "Parse acceptable methods");
 
-                    let acceptable = match acceptable.as_array() {
-                        Some(acceptable) => acceptable,
-                        None => return Err(ErrorKind::MethodsMustBeArray(acceptable.to_owned())),
+                    let Some(acceptable) = acceptable.as_array() else {
+                        return Err(ErrorKind::MethodsMustBeArray(acceptable.clone()));
                     };
 
                     for method in acceptable {
                         match method.as_table() {
                             Some(method) => {
-                                if let Some(value) = method.get("value") {
-                                    match value.as_str() {
+                                if let Some(exact) = method.get("exact") {
+                                    match exact.as_str() {
                                         Some(method) => {
                                             route_builder =
                                                 route_builder.method(method::Matcher::new(
@@ -219,16 +285,16 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                                                 ));
                                         }
                                         None => {
-                                            return Err(ErrorKind::MethodValueMustBeString(
-                                                value.to_owned(),
+                                            return Err(ErrorKind::MethodExactMustBeString(
+                                                exact.clone(),
                                             ))
                                         }
                                     }
                                 } else {
-                                    event!(Level::TRACE, "Method value not found");
+                                    event!(Level::TRACE, "Method exact not found");
                                 }
                             }
-                            None => return Err(ErrorKind::MethodMustBeTable(method.to_owned())),
+                            None => return Err(ErrorKind::MethodMustBeTable(method.clone())),
                         }
                     }
                 }
@@ -241,16 +307,15 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                 Some(unacceptable) => {
                     event!(Level::TRACE, "Parse unacceptable methods");
 
-                    let unacceptable = match unacceptable.as_array() {
-                        Some(unacceptable) => unacceptable,
-                        None => return Err(ErrorKind::MethodsMustBeArray(unacceptable.to_owned())),
+                    let Some(unacceptable) = unacceptable.as_array() else {
+                        return Err(ErrorKind::MethodsMustBeArray(unacceptable.clone()));
                     };
 
                     for method in unacceptable {
                         match method.as_table() {
                             Some(method) => {
-                                if let Some(value) = method.get("value") {
-                                    match value.as_str() {
+                                if let Some(exact) = method.get("exact") {
+                                    match exact.as_str() {
                                         Some(method) => {
                                             route_builder =
                                                 route_builder.method(method::Matcher::new(
@@ -259,16 +324,16 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                                                 ));
                                         }
                                         None => {
-                                            return Err(ErrorKind::MethodValueMustBeString(
-                                                value.to_owned(),
+                                            return Err(ErrorKind::MethodExactMustBeString(
+                                                exact.clone(),
                                             ))
                                         }
                                     }
                                 } else {
-                                    event!(Level::TRACE, "Method value not found");
+                                    event!(Level::TRACE, "Method exact not found");
                                 }
                             }
-                            None => return Err(ErrorKind::MethodMustBeTable(method.to_owned())),
+                            None => return Err(ErrorKind::MethodMustBeTable(method.clone())),
                         }
                     }
                 }
@@ -286,25 +351,23 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
         Some(schemes) => {
             event!(Level::TRACE, "Parse schemes");
 
-            let schemes = match schemes.as_table() {
-                Some(schemes) => schemes,
-                None => return Err(ErrorKind::SchemesMustBeTable(schemes.to_owned())),
+            let Some(schemes) = schemes.as_table() else {
+                return Err(ErrorKind::SchemesMustBeTable(schemes.clone()));
             };
 
             match schemes.get("acceptable") {
                 Some(acceptable) => {
                     event!(Level::TRACE, "Parse acceptable schemes");
 
-                    let acceptable = match acceptable.as_array() {
-                        Some(acceptable) => acceptable,
-                        None => return Err(ErrorKind::SchemesMustBeArray(acceptable.to_owned())),
+                    let Some(acceptable) = acceptable.as_array() else {
+                        return Err(ErrorKind::SchemesMustBeArray(acceptable.clone()));
                     };
 
                     for scheme in acceptable {
                         match scheme.as_table() {
                             Some(scheme) => {
-                                if let Some(value) = scheme.get("value") {
-                                    match value.as_str() {
+                                if let Some(exact) = scheme.get("exact") {
+                                    match exact.as_str() {
                                         Some(scheme) => {
                                             route_builder =
                                                 route_builder.scheme(scheme::Matcher::new(
@@ -313,16 +376,16 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                                                 ));
                                         }
                                         None => {
-                                            return Err(ErrorKind::SchemeValueMustBeString(
-                                                value.to_owned(),
+                                            return Err(ErrorKind::SchemeExactMustBeString(
+                                                exact.clone(),
                                             ))
                                         }
                                     }
                                 } else {
-                                    event!(Level::TRACE, "Scheme value not found");
+                                    event!(Level::TRACE, "Scheme exact not found");
                                 }
                             }
-                            None => return Err(ErrorKind::SchemeMustBeTable(scheme.to_owned())),
+                            None => return Err(ErrorKind::SchemeMustBeTable(scheme.clone())),
                         }
                     }
                 }
@@ -335,16 +398,15 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                 Some(unacceptable) => {
                     event!(Level::TRACE, "Parse unacceptable schemes");
 
-                    let unacceptable = match unacceptable.as_array() {
-                        Some(unacceptable) => unacceptable,
-                        None => return Err(ErrorKind::SchemesMustBeArray(unacceptable.to_owned())),
+                    let Some(unacceptable) = unacceptable.as_array() else {
+                        return Err(ErrorKind::SchemesMustBeArray(unacceptable.clone()));
                     };
 
                     for scheme in unacceptable {
                         match scheme.as_table() {
                             Some(scheme) => {
-                                if let Some(value) = scheme.get("value") {
-                                    match value.as_str() {
+                                if let Some(exact) = scheme.get("exact") {
+                                    match exact.as_str() {
                                         Some(scheme) => {
                                             route_builder =
                                                 route_builder.scheme(scheme::Matcher::new(
@@ -353,16 +415,16 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                                                 ));
                                         }
                                         None => {
-                                            return Err(ErrorKind::SchemeValueMustBeString(
-                                                value.to_owned(),
+                                            return Err(ErrorKind::SchemeExactMustBeString(
+                                                exact.clone(),
                                             ))
                                         }
                                     }
                                 } else {
-                                    event!(Level::TRACE, "Scheme value not found");
+                                    event!(Level::TRACE, "Scheme exact not found");
                                 }
                             }
-                            None => return Err(ErrorKind::SchemeMustBeTable(scheme.to_owned())),
+                            None => return Err(ErrorKind::SchemeMustBeTable(scheme.clone())),
                         }
                     }
                 }
@@ -380,61 +442,73 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
         Some(ports) => {
             event!(Level::TRACE, "Parse ports");
 
-            let ports = match ports.as_table() {
-                Some(ports) => ports,
-                None => return Err(ErrorKind::PortsMustBeTable(ports.to_owned())),
+            let Some(ports) = ports.as_table() else {
+                return Err(ErrorKind::PortsMustBeTable(ports.clone()));
             };
 
             match ports.get("acceptable") {
                 Some(acceptable) => {
                     event!(Level::TRACE, "Parse acceptable ports");
 
-                    let acceptable = match acceptable.as_array() {
-                        Some(acceptable) => acceptable,
-                        None => return Err(ErrorKind::PortsMustBeArray(acceptable.to_owned())),
+                    let Some(acceptable) = acceptable.as_array() else {
+                        return Err(ErrorKind::PortsMustBeArray(acceptable.clone()));
                     };
 
                     for port in acceptable {
                         match port.as_table() {
                             Some(port) => {
-                                if let Some(value) = port.get("value") {
-                                    match value.as_str() {
+                                if let Some(glob) = port.get("glob") {
+                                    match glob.as_str() {
                                         Some(port) => {
                                             route_builder = route_builder.port(port::Matcher::new(
                                                 PermissionKind::Acceptable,
-                                                port::Kind::try_from(port.to_owned())?,
+                                                port::Kind::glob(port)
+                                                    .map_err(ErrorKind::PortGlobPattern)?,
                                             ));
 
                                             continue;
                                         }
-                                        None => {}
+                                        None => {
+                                            return Err(ErrorKind::PortGlobMustBeString(
+                                                glob.clone(),
+                                            ))
+                                        }
+                                    }
+                                }
+
+                                event!(Level::TRACE, "Port glob not found");
+
+                                if let Some(exact) = port.get("exact") {
+                                    if let Some(port) = exact.as_str() {
+                                        route_builder = route_builder.port(port::Matcher::new(
+                                            PermissionKind::Acceptable,
+                                            port::Kind::exact_str(port)
+                                                .map_err(ErrorKind::PortExactParseError)?,
+                                        ));
+
+                                        continue;
                                     }
 
-                                    match value.as_integer() {
-                                        Some(port) => {
-                                            route_builder = route_builder.port(port::Matcher::new(
+                                    if let Some(port) = exact.as_integer() {
+                                        route_builder =
+                                            route_builder.port(port::Matcher::new(
                                                 PermissionKind::Acceptable,
-                                                port::Kind::from(port as u16),
+                                                port::Kind::exact(u16::try_from(port).expect(
+                                                    "Port number must be between 0 and 65535",
+                                                )),
                                             ));
 
-                                            continue;
-                                        }
-                                        None => {}
+                                        continue;
                                     }
 
-                                    return Err(ErrorKind::PortValueMustBeStringOrInt(
-                                        value.to_owned(),
-                                    ));
-                                } else {
-                                    event!(Level::TRACE, "Port value not found");
-
-                                    route_builder = route_builder.port(port::Matcher::new(
-                                        PermissionKind::Acceptable,
-                                        port::Kind::Any,
+                                    return Err(ErrorKind::PortExactMustBeStringOrInt(
+                                        exact.clone(),
                                     ));
                                 }
+
+                                event!(Level::TRACE, "Port exact not found");
                             }
-                            None => return Err(ErrorKind::PortMustBeTable(port.to_owned())),
+                            None => return Err(ErrorKind::PortMustBeTable(port.clone())),
                         }
                     }
                 }
@@ -447,47 +521,65 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                 Some(unacceptable) => {
                     event!(Level::TRACE, "Parse unacceptable ports");
 
-                    let unacceptable = match unacceptable.as_array() {
-                        Some(unacceptable) => unacceptable,
-                        None => return Err(ErrorKind::PortsMustBeArray(unacceptable.to_owned())),
+                    let Some(unacceptable) = unacceptable.as_array() else {
+                        return Err(ErrorKind::PortsMustBeArray(unacceptable.clone()));
                     };
 
                     for port in unacceptable {
                         match port.as_table() {
                             Some(port) => {
-                                if let Some(value) = port.get("value") {
-                                    match value.as_str() {
+                                if let Some(glob) = port.get("glob") {
+                                    match glob.as_str() {
                                         Some(port) => {
                                             route_builder = route_builder.port(port::Matcher::new(
                                                 PermissionKind::Unacceptable,
-                                                port::Kind::try_from(port.to_owned())?,
+                                                port::Kind::glob(port)
+                                                    .map_err(ErrorKind::PortGlobPattern)?,
                                             ));
 
                                             continue;
                                         }
-                                        None => {}
-                                    }
-
-                                    match value.as_integer() {
-                                        Some(port) => {
-                                            route_builder = route_builder.port(port::Matcher::new(
-                                                PermissionKind::Unacceptable,
-                                                port::Kind::from(port as u16),
-                                            ));
-
-                                            continue;
+                                        None => {
+                                            return Err(ErrorKind::PortGlobMustBeString(
+                                                glob.clone(),
+                                            ))
                                         }
-                                        None => {}
                                     }
-
-                                    return Err(ErrorKind::PortValueMustBeStringOrInt(
-                                        value.to_owned(),
-                                    ));
-                                } else {
-                                    event!(Level::TRACE, "Port value not found");
                                 }
+
+                                event!(Level::TRACE, "Port glob not found");
+
+                                if let Some(exact) = port.get("exact") {
+                                    if let Some(port) = exact.as_str() {
+                                        route_builder = route_builder.port(port::Matcher::new(
+                                            PermissionKind::Unacceptable,
+                                            port::Kind::exact_str(port)
+                                                .map_err(ErrorKind::PortExactParseError)?,
+                                        ));
+
+                                        continue;
+                                    }
+
+                                    if let Some(port) = exact.as_integer() {
+                                        route_builder =
+                                            route_builder.port(port::Matcher::new(
+                                                PermissionKind::Unacceptable,
+                                                port::Kind::exact(u16::try_from(port).expect(
+                                                    "Port number must be between 0 and 65535",
+                                                )),
+                                            ));
+
+                                        continue;
+                                    }
+
+                                    return Err(ErrorKind::PortExactMustBeStringOrInt(
+                                        exact.clone(),
+                                    ));
+                                }
+
+                                event!(Level::TRACE, "Port exact not found");
                             }
-                            None => return Err(ErrorKind::PortMustBeTable(port.to_owned())),
+                            None => return Err(ErrorKind::PortMustBeTable(port.clone())),
                         }
                     }
                 }
@@ -505,42 +597,61 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
         Some(paths) => {
             event!(Level::TRACE, "Parse paths");
 
-            let paths = match paths.as_table() {
-                Some(paths) => paths,
-                None => return Err(ErrorKind::PathsMustBeTable(paths.to_owned())),
+            let Some(paths) = paths.as_table() else {
+                return Err(ErrorKind::PathsMustBeTable(paths.clone()));
             };
 
             match paths.get("acceptable") {
                 Some(acceptable) => {
                     event!(Level::TRACE, "Parse acceptable paths");
 
-                    let acceptable = match acceptable.as_array() {
-                        Some(acceptable) => acceptable,
-                        None => return Err(ErrorKind::PathsMustBeArray(acceptable.to_owned())),
+                    let Some(acceptable) = acceptable.as_array() else {
+                        return Err(ErrorKind::PathsMustBeArray(acceptable.clone()));
                     };
 
                     for path in acceptable {
                         match path.as_table() {
                             Some(path) => {
-                                if let Some(value) = path.get("value") {
-                                    match value.as_str() {
+                                if let Some(glob) = path.get("glob") {
+                                    match glob.as_str() {
                                         Some(path) => {
                                             route_builder = route_builder.path(path::Matcher::new(
                                                 PermissionKind::Acceptable,
-                                                path::Kind::try_from(path.to_owned())?,
+                                                path::Kind::glob(path)
+                                                    .map_err(ErrorKind::PathGlobPattern)?,
+                                            ));
+
+                                            continue;
+                                        }
+                                        None => {
+                                            return Err(ErrorKind::PathGlobMustBeString(
+                                                glob.clone(),
+                                            ))
+                                        }
+                                    }
+                                }
+
+                                event!(Level::TRACE, "Path glob not found");
+
+                                if let Some(exact) = path.get("exact") {
+                                    match exact.as_str() {
+                                        Some(path) => {
+                                            route_builder = route_builder.path(path::Matcher::new(
+                                                PermissionKind::Acceptable,
+                                                path::Kind::exact(path),
                                             ));
                                         }
                                         None => {
-                                            return Err(ErrorKind::PathValueMustBeString(
-                                                value.to_owned(),
+                                            return Err(ErrorKind::PathExactMustBeString(
+                                                exact.clone(),
                                             ))
                                         }
                                     }
                                 } else {
-                                    event!(Level::TRACE, "Path value not found");
+                                    event!(Level::TRACE, "Path exact not found");
                                 }
                             }
-                            None => return Err(ErrorKind::PathMustBeTable(path.to_owned())),
+                            None => return Err(ErrorKind::PathMustBeTable(path.clone())),
                         }
                     }
                 }
@@ -553,33 +664,53 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                 Some(unacceptable) => {
                     event!(Level::TRACE, "Parse unacceptable paths");
 
-                    let unacceptable = match unacceptable.as_array() {
-                        Some(unacceptable) => unacceptable,
-                        None => return Err(ErrorKind::PathsMustBeArray(unacceptable.to_owned())),
+                    let Some(unacceptable) = unacceptable.as_array() else {
+                        return Err(ErrorKind::PathsMustBeArray(unacceptable.clone()));
                     };
 
                     for path in unacceptable {
                         match path.as_table() {
                             Some(path) => {
-                                if let Some(value) = path.get("value") {
-                                    match value.as_str() {
+                                if let Some(glob) = path.get("glob") {
+                                    match glob.as_str() {
                                         Some(path) => {
                                             route_builder = route_builder.path(path::Matcher::new(
                                                 PermissionKind::Unacceptable,
-                                                path::Kind::try_from(path.to_owned())?,
+                                                path::Kind::glob(path)
+                                                    .map_err(ErrorKind::PathGlobPattern)?,
+                                            ));
+
+                                            continue;
+                                        }
+                                        None => {
+                                            return Err(ErrorKind::PathGlobMustBeString(
+                                                glob.clone(),
+                                            ))
+                                        }
+                                    }
+                                }
+
+                                event!(Level::TRACE, "Path glob not found");
+
+                                if let Some(exact) = path.get("exact") {
+                                    match exact.as_str() {
+                                        Some(path) => {
+                                            route_builder = route_builder.path(path::Matcher::new(
+                                                PermissionKind::Unacceptable,
+                                                path::Kind::exact(path),
                                             ));
                                         }
                                         None => {
-                                            return Err(ErrorKind::PathValueMustBeString(
-                                                value.to_owned(),
+                                            return Err(ErrorKind::PathExactMustBeString(
+                                                exact.clone(),
                                             ))
                                         }
                                     }
                                 } else {
-                                    event!(Level::TRACE, "Path value not found");
+                                    event!(Level::TRACE, "Path exact not found");
                                 }
                             }
-                            None => return Err(ErrorKind::PathMustBeTable(path.to_owned())),
+                            None => return Err(ErrorKind::PathMustBeTable(path.clone())),
                         }
                     }
                 }
@@ -615,55 +746,55 @@ mod tests {
             [[routes.hosts.acceptable]]
 
             [[routes.hosts.acceptable]]
-            value = "example.com"
+            exact = "example.com"
 
             [[routes.hosts.acceptable]]
-            value = "example2.com"
+            glob = "example*.com"
 
             [[routes.hosts.unacceptable]]
-            value = "127.0.0.1"
+            exact = "127.0.0.1"
 
             [[routes.schemes.acceptable]]
-            value = "https"
+            exact = "https"
 
             [[routes.schemes.acceptable]]
 
             [[routes.schemes.acceptable]]
-            value = "http"
+            exact = "http"
 
             [[routes.schemes.unacceptable]]
-            value = "http"
+            exact = "http"
 
             [[routes.ports.acceptable]]
-            value = "8080"
+            exact = "8080"
 
             [[routes.ports.acceptable]]
-            value = 80
+            exact = 80
 
             [[routes.ports.acceptable]]
-            value = "80*"
+            glob = "80*"
 
             [[routes.ports.unacceptable]]
 
             [[routes.paths.acceptable]]
-            value = "/example/"
+            exact = "/example/"
 
             [[routes.paths.acceptable]]
-            value = "/example2/*"
+            glob = "/example2/*"
 
             [[routes.paths.unacceptable]]
-            value = "/admin/*"
+            glob = "/admin/*"
 
             [[routes.paths.unacceptable]]
 
             [[routes.methods.acceptable]]
-            value = "GET"
+            exact = "GET"
 
             [[routes.methods.acceptable]]
-            value = "PATCH"
+            exact = "PATCH"
 
             [[routes.methods.unacceptable]]
-            value = "POST"
+            exact = "POST"
         "#;
 
         let rules = parse_rules_from_toml(raw).unwrap();
@@ -676,7 +807,7 @@ mod tests {
         );
         assert_eq!(
             route.hosts.acceptable[1],
-            host::Kind::Exact(Host::Domain("example2.com".to_owned()))
+            host::Kind::Glob(Pattern::new("example*.com").unwrap())
         );
         assert_eq!(route.hosts.unacceptable.len(), 1);
         assert_eq!(
