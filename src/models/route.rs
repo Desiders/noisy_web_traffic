@@ -5,7 +5,7 @@ use crate::models::routes::{
 
 use std::iter;
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct Route {
     pub hosts: Hosts,
     pub methods: Methods,
@@ -77,6 +77,18 @@ impl Route {
 
     pub fn builder() -> Builder {
         Builder::default()
+    }
+}
+
+impl Default for Route {
+    fn default() -> Self {
+        Self::new(
+            Hosts::default(),
+            Methods::default(),
+            Paths::default(),
+            Ports::default(),
+            Schemes::default(),
+        )
     }
 }
 
