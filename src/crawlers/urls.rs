@@ -27,7 +27,7 @@ impl Crawler {
         Self { client, rules }
     }
 
-    pub async fn crawl(&self, url: Url) -> Result<CrawlerInner, ErrorKind> {
+    pub async fn crawl(&self, url: &Url) -> Result<CrawlerInner, ErrorKind> {
         let raw_html = self.client.get(url).await?.text().await?;
         let dom_guard = get_dom_guard(raw_html)?;
 

@@ -1,13 +1,13 @@
-use super::dom::a_href_iter;
+use super::dom::get_a_hrefs;
 
 use tl::VDom as Dom;
 use url::Url;
 
-pub fn url_iter_from_dom_href<'dom>(
-    dom: &'dom Dom<'dom>,
-) -> Option<impl Iterator<Item = Url> + 'dom> {
-    a_href_iter(dom).map(|href_iterator| {
-        href_iterator
+pub fn get_urls_from_dom<'dom: 'dref, 'dref>(
+    dom: &'dref Dom<'dom>,
+) -> Option<impl Iterator<Item = Url> + 'dref> {
+    get_a_hrefs(dom).map(|hrefs| {
+        hrefs
             .filter_map(|href| Url::parse(&href).ok())
             .filter(Url::has_host) // https://url.spec.whatwg.org/#host-state
             .filter(Url::is_special) // https://url.spec.whatwg.org/#special-scheme
@@ -17,11 +17,11 @@ pub fn url_iter_from_dom_href<'dom>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::dom::dom_default;
+    use crate::parser::dom::get_dom;
 
     #[test]
-    fn test_url_iter_from_dom() {
-        let dom = dom_default(
+    fn test_get_urls_from_dom() {
+        let dom = get_dom(
             r#"
             <html>
                 <body>
@@ -38,11 +38,11 @@ mod tests {
         )
         .unwrap();
 
-        let urls = url_iter_from_dom_href(&dom).unwrap().collect::<Vec<_>>();
+        let urls = get_urls_from_dom(&dom).unwrap().collect::<Vec<_>>();
 
         assert_eq!(
             urls,
-            vec![
+            [
                 Url::parse("https://example1.com").unwrap(),
                 Url::parse("https://example2.com").unwrap(),
                 Url::parse("https://example3.com").unwrap(),

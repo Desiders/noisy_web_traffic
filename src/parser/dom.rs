@@ -1,47 +1,65 @@
-use std::borrow::Cow;
-use tl::{Bytes, HTMLTag as Tag, Node, ParseError, ParserOptions, VDom as Dom};
+use tl::{HTMLTag as Tag, Node, ParseError, ParserOptions, VDom as Dom, VDomGuard as DomGuard};
 
-pub fn dom(raw: &str, options: ParserOptions) -> Result<Dom<'_>, ParseError> {
+pub fn get_dom_with_options(raw: &str, options: ParserOptions) -> Result<Dom<'_>, ParseError> {
     let dom = tl::parse(raw, options)?;
 
     Ok(dom)
 }
 
-pub fn dom_default(raw: &str) -> Result<Dom<'_>, ParseError> {
-    dom(raw, ParserOptions::default())
+pub fn get_dom(raw: &str) -> Result<Dom<'_>, ParseError> {
+    get_dom_with_options(raw, ParserOptions::default())
 }
 
-pub(super) fn node_iter<'s: 'dom, 'dom>(
-    dom: &'dom Dom<'dom>,
+/// # Safety
+/// This uses `unsafe` code to create a self-referential-like struct.
+/// The given input string is first leaked and turned into raw pointer, and its lifetime will be promoted to 'static.
+/// Once [`DomGuard`] goes out of scope, the string will be freed.
+/// It should not be possible to cause UB in its current form.
+pub fn get_dom_guard_with_options(
+    raw: String,
+    options: ParserOptions,
+) -> Result<DomGuard, ParseError> {
+    let dom = unsafe { tl::parse_owned(raw, options)? };
+
+    Ok(dom)
+}
+
+/// # Safety
+/// This uses `unsafe` code to create a self-referential-like struct.
+/// The given input string is first leaked and turned into raw pointer, and its lifetime will be promoted to 'static.
+/// Once [`DomGuard`] goes out of scope, the string will be freed.
+/// It should not be possible to cause UB in its current form.
+pub fn get_dom_guard(raw: String) -> Result<DomGuard, ParseError> {
+    get_dom_guard_with_options(raw, ParserOptions::default())
+}
+
+pub(super) fn get_nodes<'s: 'dom, 'dom: 'dref, 'dref>(
+    dom: &'dref Dom<'dom>,
     selector: &'s str,
-) -> Option<impl Iterator<Item = &'dom Node<'dom>> + 'dom> {
+) -> Option<impl Iterator<Item = &'dref Node<'dom>>> {
     let parser = dom.parser();
 
     dom.query_selector(selector)
-        .map(|selector_iterator| selector_iterator.filter_map(move |node| node.get(&parser)))
+        .map(|selectors| selectors.filter_map(move |node| node.get(&parser)))
 }
 
-pub(super) fn tag_iter<'s: 'dom, 'dom>(
-    dom: &'dom Dom<'dom>,
+pub(super) fn get_tags<'s: 'dom, 'dom: 'dref, 'dref>(
+    dom: &'dref Dom<'dom>,
     selector: &'s str,
-) -> Option<impl Iterator<Item = &'dom Tag<'dom>> + 'dom> {
-    node_iter(dom, selector).map(|node_iterator| Iterator::filter_map(node_iterator, Node::as_tag))
+) -> Option<impl Iterator<Item = &'dref Tag<'dom>>> {
+    get_nodes(dom, selector).map(|nodes| Iterator::filter_map(nodes, Node::as_tag))
 }
 
-pub(super) fn a_href_iter<'s: 'dom, 'dom>(
-    dom: &'dom Dom<'dom>,
-) -> Option<impl Iterator<Item = Cow<'dom, str>> + 'dom> {
-    tag_iter(dom, "a[href]").map(|tag_iterator| {
-        tag_iterator
-            .filter_map(|tag| {
-                tag.attributes()
-                    .get("href")
-                    .expect("href attribute cannot be empty, because of the selector")
-            })
-            .map(|href| match href.try_as_utf8_str() {
-                Some(href) => Cow::Borrowed(href),
-                None => href.as_utf8_str(),
-            })
+pub(super) fn get_a_hrefs<'dom: 'dref, 'dref>(
+    dom: &'dref Dom<'dom>,
+) -> Option<impl Iterator<Item = &'dref str>> {
+    get_tags(dom, "a[href]").map(|tags| {
+        tags.filter_map(|tag| {
+            tag.attributes()
+                .get("href")
+                .expect("href attribute cannot be empty, because of the selector")
+        })
+        .map(|href| href.try_as_utf8_str().unwrap())
     })
 }
 
@@ -51,7 +69,7 @@ mod tests {
 
     #[test]
     fn test_dom() {
-        let dom = dom_default("<html><body><p>hello</p></body></html>").unwrap();
+        let dom = get_dom("<html><body><p>hello</p></body></html>").unwrap();
         let first_tag = dom.children()[0]
             .get(dom.parser())
             .unwrap()
@@ -63,8 +81,8 @@ mod tests {
     }
 
     #[test]
-    fn test_node_iter() {
-        let dom = dom_default(
+    fn test_get_nodes() {
+        let dom = get_dom(
             r#"
             <html>
                 <body>
@@ -78,7 +96,7 @@ mod tests {
 
         let mut count = 0;
 
-        for node in node_iter(&dom, "p").unwrap() {
+        for node in get_nodes(&dom, "p").unwrap() {
             let tag = node.as_tag().unwrap();
 
             assert_eq!(tag.name(), "p");
@@ -88,11 +106,11 @@ mod tests {
 
         assert_eq!(count, 3);
 
-        assert!(node_iter(&dom, "div").unwrap().count() == 0);
+        assert!(get_nodes(&dom, "div").unwrap().count() == 0);
 
         let mut count = 0;
 
-        for node in node_iter(&dom, "body").unwrap() {
+        for node in get_nodes(&dom, "body").unwrap() {
             let tag = node.as_tag().unwrap();
 
             assert_eq!(tag.name(), "body");
@@ -102,7 +120,7 @@ mod tests {
 
         assert_eq!(count, 1);
 
-        let dom = dom_default(
+        let dom = get_dom(
             r#"
             <html>
                 <body>
@@ -117,7 +135,7 @@ mod tests {
 
         let mut count = 0;
 
-        for node in node_iter(&dom, "a[href]").unwrap() {
+        for node in get_nodes(&dom, "a[href]").unwrap() {
             let tag = node.as_tag().unwrap();
 
             assert_eq!(tag.name(), "a");
@@ -130,8 +148,8 @@ mod tests {
     }
 
     #[test]
-    fn test_tag_iter() {
-        let dom = dom_default(
+    fn test_get_tags() {
+        let dom = get_dom(
             r#"
             <html>
                 <body>
@@ -145,7 +163,7 @@ mod tests {
 
         let mut count = 0;
 
-        for tag in tag_iter(&dom, "p").unwrap() {
+        for tag in get_tags(&dom, "p").unwrap() {
             assert_eq!(tag.name(), "p");
 
             count += 1;
@@ -153,11 +171,11 @@ mod tests {
 
         assert_eq!(count, 3);
 
-        assert!(tag_iter(&dom, "div").unwrap().count() == 0);
+        assert!(get_tags(&dom, "div").unwrap().count() == 0);
 
         let mut count = 0;
 
-        for tag in tag_iter(&dom, "body").unwrap() {
+        for tag in get_tags(&dom, "body").unwrap() {
             assert_eq!(tag.name(), "body");
 
             count += 1;
@@ -165,7 +183,7 @@ mod tests {
 
         assert_eq!(count, 1);
 
-        let dom = dom_default(
+        let dom = get_dom(
             r#"
             <html>
                 <body>
@@ -180,7 +198,7 @@ mod tests {
 
         let mut count = 0;
 
-        for tag in tag_iter(&dom, "a[href]").unwrap() {
+        for tag in get_tags(&dom, "a[href]").unwrap() {
             assert_eq!(tag.name(), "a");
             assert!(!tag.attributes().is_empty());
 
@@ -191,8 +209,8 @@ mod tests {
     }
 
     #[test]
-    fn test_a_href_iter() {
-        let dom = dom_default(
+    fn test_get_a_hrefs() {
+        let dom = get_dom(
             r#"
             <html>
                 <body>
@@ -208,7 +226,7 @@ mod tests {
 
         let mut count = 0;
 
-        for href in a_href_iter(&dom).unwrap() {
+        for href in get_a_hrefs(&dom).unwrap() {
             assert_eq!(href, "https://example.com");
 
             count += 1;

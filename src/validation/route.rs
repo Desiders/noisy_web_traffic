@@ -4,7 +4,7 @@ use tracing::{event, instrument, Level};
 use url::Url;
 
 #[instrument]
-pub fn validate_url(url: Url, route: &Route) -> bool {
+pub fn validate_url(url: &Url, route: &Route) -> bool {
     let Some(host) = url.host_str() else {
         event!(Level::DEBUG, "No host found");
 
@@ -43,22 +43,22 @@ mod tests {
 
         let url = Url::parse("http://localhost:8080/").unwrap();
 
-        assert!(validate_url(url, &route));
+        assert!(validate_url(&url, &route));
 
         let url = Url::parse("http://localhost/").unwrap();
 
-        assert!(validate_url(url, &route));
+        assert!(validate_url(&url, &route));
 
         let url = Url::parse("test://localhost/").unwrap();
 
-        assert!(!validate_url(url, &route));
+        assert!(!validate_url(&url, &route));
 
         let url = Url::parse("unix:/run/foo.socket").unwrap();
 
-        assert!(!validate_url(url, &route));
+        assert!(!validate_url(&url, &route));
 
         let url = Url::parse("http://localhost:8080/foo").unwrap();
 
-        assert!(validate_url(url, &route));
+        assert!(validate_url(&url, &route));
     }
 }
