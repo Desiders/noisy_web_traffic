@@ -8,7 +8,7 @@ pub fn get_urls_from_dom<'dom: 'dref, 'dref>(
 ) -> Option<impl Iterator<Item = Url> + 'dref> {
     get_a_hrefs(dom).map(|hrefs| {
         hrefs
-            .filter_map(|href| Url::parse(&href).ok())
+            .filter_map(|href| Url::parse(href).ok())
             .filter(Url::has_host) // https://url.spec.whatwg.org/#host-state
             .filter(Url::is_special) // https://url.spec.whatwg.org/#special-scheme
     })

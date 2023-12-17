@@ -6,6 +6,7 @@ pub fn get_dom_with_options(raw: &str, options: ParserOptions) -> Result<Dom<'_>
     Ok(dom)
 }
 
+#[allow(clippy::module_name_repetitions)]
 pub fn get_dom(raw: &str) -> Result<Dom<'_>, ParseError> {
     get_dom_with_options(raw, ParserOptions::default())
 }
@@ -40,7 +41,7 @@ pub(super) fn get_nodes<'s: 'dom, 'dom: 'dref, 'dref>(
     let parser = dom.parser();
 
     dom.query_selector(selector)
-        .map(|selectors| selectors.filter_map(move |node| node.get(&parser)))
+        .map(|selectors| selectors.filter_map(|node| node.get(parser)))
 }
 
 pub(super) fn get_tags<'s: 'dom, 'dom: 'dref, 'dref>(
