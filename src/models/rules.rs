@@ -1,13 +1,14 @@
-use super::route::Route;
+use super::{polling::Polling, route::Route};
 
 #[derive(Debug, Default, Clone)]
 pub struct Rules {
     pub route: Route,
+    pub polling: Polling,
 }
 
 impl Rules {
-    pub const fn new(route: Route) -> Self {
-        Self { route }
+    pub const fn new(route: Route, polling: Polling) -> Self {
+        Self { route, polling }
     }
 
     pub fn builder() -> Builder {
@@ -18,6 +19,7 @@ impl Rules {
 #[derive(Debug, Default, Clone)]
 pub struct Builder {
     pub route: Route,
+    pub polling: Polling,
 }
 
 impl Builder {
@@ -26,7 +28,12 @@ impl Builder {
         self
     }
 
+    pub fn polling(mut self, polling: Polling) -> Self {
+        self.polling = polling;
+        self
+    }
+
     pub fn build(self) -> Rules {
-        Rules::new(self.route)
+        Rules::new(self.route, self.polling)
     }
 }
