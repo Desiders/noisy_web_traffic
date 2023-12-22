@@ -1,4 +1,5 @@
 use crate::models::{
+    polling::{depth, proxy, redirections, time, user_agent, Polling},
     route::Route,
     routes::{
         host,
@@ -12,15 +13,12 @@ use crate::models::{
 };
 
 use glob::PatternError;
-use std::num::ParseIntError;
+use std::{fs, io, num::ParseIntError, path::Path};
 use toml::{map::Map, Value};
-use tracing::{event, instrument, Level};
+use tracing::{event, field, instrument, Level, Span};
 
-/// Error kind for [`parse_rules_from_toml`].
-/// # Notes
-/// This error kind is used to indicate which rule is invalid and why it is invalid.
 #[derive(Debug, thiserror::Error)]
-pub enum ErrorKind {
+pub enum ParseRouteErrorKind {
     #[error("Parse toml error: {0}")]
     ParseToml(#[from] toml::de::Error),
 
@@ -97,31 +95,29 @@ pub enum ErrorKind {
     PathExactMustBeString(Value),
 }
 
-/// Parse rules from toml
+/// Parse route from toml
 /// # Arguments
 /// * `raw` - Raw toml string
 /// # Returns
-/// Returns [`Rules`] if parsing is successful and all rules are valid, otherwise returns [`ErrorKind`].
+/// Returns [`Route`] if parsing is successful and all routes are valid, otherwise returns [`ParseRouteErrorKind`].
 /// # Panics
 /// If the port number is not between 0 and 65535
 #[instrument(skip_all)]
-pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
-    event!(Level::DEBUG, "Parse rules from toml");
+pub fn parse_route_from_toml(raw: &str) -> Result<Route, ParseRouteErrorKind> {
+    event!(Level::DEBUG, "Parse route from toml");
 
     let value = raw.parse::<Value>()?;
     let Some(table) = value.as_table() else {
-        return Err(ErrorKind::ConfigMustBeTable(value));
+        return Err(ParseRouteErrorKind::ConfigMustBeTable(value));
     };
 
     let routes = match table.get("routes") {
         Some(routes) => match routes.as_table() {
             Some(routes) => routes,
-            None => return Err(ErrorKind::RoutesMustBeTable(routes.clone())),
+            None => return Err(ParseRouteErrorKind::RoutesMustBeTable(routes.clone())),
         },
-        None => return Err(ErrorKind::RoutesNotFound(table.clone())),
+        None => return Err(ParseRouteErrorKind::RoutesNotFound(table.clone())),
     };
-
-    let mut rules_builder = Rules::builder();
 
     let mut route_builder = Route::builder();
 
@@ -130,7 +126,7 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
             event!(Level::TRACE, "Parse hosts");
 
             let Some(hosts) = hosts.as_table() else {
-                return Err(ErrorKind::HostsMustBeTable(hosts.clone()));
+                return Err(ParseRouteErrorKind::HostsMustBeTable(hosts.clone()));
             };
 
             match hosts.get("acceptable") {
@@ -138,7 +134,7 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                     event!(Level::TRACE, "Parse acceptable hosts");
 
                     let Some(acceptable) = acceptable.as_array() else {
-                        return Err(ErrorKind::HostsMustBeArray(acceptable.clone()));
+                        return Err(ParseRouteErrorKind::HostsMustBeArray(acceptable.clone()));
                     };
 
                     for host in acceptable {
@@ -149,14 +145,15 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                                         Some(host) => {
                                             route_builder = route_builder.host(host::Matcher::new(
                                                 PermissionKind::Acceptable,
-                                                host::Kind::glob(host)
-                                                    .map_err(ErrorKind::HostGlobPattern)?,
+                                                host::Kind::glob(host).map_err(
+                                                    ParseRouteErrorKind::HostGlobPattern,
+                                                )?,
                                             ));
 
                                             continue;
                                         }
                                         None => {
-                                            return Err(ErrorKind::HostGlobMustBeString(
+                                            return Err(ParseRouteErrorKind::HostGlobMustBeString(
                                                 glob.clone(),
                                             ))
                                         }
@@ -172,18 +169,20 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                                                 PermissionKind::Acceptable,
                                                 host::Kind::exact(host)?,
                                             ));
+
+                                            continue;
                                         }
                                         None => {
-                                            return Err(ErrorKind::HostExactMustBeString(
+                                            return Err(ParseRouteErrorKind::HostExactMustBeString(
                                                 exact.clone(),
                                             ))
                                         }
                                     }
-                                } else {
-                                    event!(Level::TRACE, "Host exact not found");
                                 }
+
+                                event!(Level::TRACE, "Host exact not found");
                             }
-                            None => return Err(ErrorKind::HostMustBeTable(host.clone())),
+                            None => return Err(ParseRouteErrorKind::HostMustBeTable(host.clone())),
                         }
                     }
                 }
@@ -197,7 +196,7 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                     event!(Level::TRACE, "Parse unacceptable hosts");
 
                     let Some(unacceptable) = unacceptable.as_array() else {
-                        return Err(ErrorKind::HostsMustBeArray(unacceptable.clone()));
+                        return Err(ParseRouteErrorKind::HostsMustBeArray(unacceptable.clone()));
                     };
 
                     for host in unacceptable {
@@ -208,14 +207,15 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                                         Some(host) => {
                                             route_builder = route_builder.host(host::Matcher::new(
                                                 PermissionKind::Unacceptable,
-                                                host::Kind::glob(host)
-                                                    .map_err(ErrorKind::HostGlobPattern)?,
+                                                host::Kind::glob(host).map_err(
+                                                    ParseRouteErrorKind::HostGlobPattern,
+                                                )?,
                                             ));
 
                                             continue;
                                         }
                                         None => {
-                                            return Err(ErrorKind::HostGlobMustBeString(
+                                            return Err(ParseRouteErrorKind::HostGlobMustBeString(
                                                 glob.clone(),
                                             ))
                                         }
@@ -231,18 +231,20 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                                                 PermissionKind::Unacceptable,
                                                 host::Kind::exact(host)?,
                                             ));
+
+                                            continue;
                                         }
                                         None => {
-                                            return Err(ErrorKind::HostExactMustBeString(
+                                            return Err(ParseRouteErrorKind::HostExactMustBeString(
                                                 exact.clone(),
                                             ))
                                         }
                                     }
-                                } else {
-                                    event!(Level::TRACE, "Host exact not found");
                                 }
+
+                                event!(Level::TRACE, "Host exact not found");
                             }
-                            None => return Err(ErrorKind::HostMustBeTable(host.clone())),
+                            None => return Err(ParseRouteErrorKind::HostMustBeTable(host.clone())),
                         }
                     }
                 }
@@ -261,7 +263,7 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
             event!(Level::TRACE, "Parse methods");
 
             let Some(methods) = methods.as_table() else {
-                return Err(ErrorKind::MethodsMustBeTable(methods.clone()));
+                return Err(ParseRouteErrorKind::MethodsMustBeTable(methods.clone()));
             };
 
             match methods.get("acceptable") {
@@ -269,7 +271,7 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                     event!(Level::TRACE, "Parse acceptable methods");
 
                     let Some(acceptable) = acceptable.as_array() else {
-                        return Err(ErrorKind::MethodsMustBeArray(acceptable.clone()));
+                        return Err(ParseRouteErrorKind::MethodsMustBeArray(acceptable.clone()));
                     };
 
                     for method in acceptable {
@@ -283,18 +285,24 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                                                     PermissionKind::Acceptable,
                                                     method::Kind::try_from(method.to_owned())?,
                                                 ));
+
+                                            continue;
                                         }
                                         None => {
-                                            return Err(ErrorKind::MethodExactMustBeString(
-                                                exact.clone(),
-                                            ))
+                                            return Err(
+                                                ParseRouteErrorKind::MethodExactMustBeString(
+                                                    exact.clone(),
+                                                ),
+                                            )
                                         }
                                     }
-                                } else {
-                                    event!(Level::TRACE, "Method exact not found");
                                 }
+
+                                event!(Level::TRACE, "Method exact not found");
                             }
-                            None => return Err(ErrorKind::MethodMustBeTable(method.clone())),
+                            None => {
+                                return Err(ParseRouteErrorKind::MethodMustBeTable(method.clone()))
+                            }
                         }
                     }
                 }
@@ -308,7 +316,9 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                     event!(Level::TRACE, "Parse unacceptable methods");
 
                     let Some(unacceptable) = unacceptable.as_array() else {
-                        return Err(ErrorKind::MethodsMustBeArray(unacceptable.clone()));
+                        return Err(ParseRouteErrorKind::MethodsMustBeArray(
+                            unacceptable.clone(),
+                        ));
                     };
 
                     for method in unacceptable {
@@ -322,18 +332,24 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                                                     PermissionKind::Unacceptable,
                                                     method::Kind::try_from(method.to_owned())?,
                                                 ));
+
+                                            continue;
                                         }
                                         None => {
-                                            return Err(ErrorKind::MethodExactMustBeString(
-                                                exact.clone(),
-                                            ))
+                                            return Err(
+                                                ParseRouteErrorKind::MethodExactMustBeString(
+                                                    exact.clone(),
+                                                ),
+                                            )
                                         }
                                     }
-                                } else {
-                                    event!(Level::TRACE, "Method exact not found");
                                 }
+
+                                event!(Level::TRACE, "Method exact not found");
                             }
-                            None => return Err(ErrorKind::MethodMustBeTable(method.clone())),
+                            None => {
+                                return Err(ParseRouteErrorKind::MethodMustBeTable(method.clone()))
+                            }
                         }
                     }
                 }
@@ -352,7 +368,7 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
             event!(Level::TRACE, "Parse schemes");
 
             let Some(schemes) = schemes.as_table() else {
-                return Err(ErrorKind::SchemesMustBeTable(schemes.clone()));
+                return Err(ParseRouteErrorKind::SchemesMustBeTable(schemes.clone()));
             };
 
             match schemes.get("acceptable") {
@@ -360,7 +376,7 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                     event!(Level::TRACE, "Parse acceptable schemes");
 
                     let Some(acceptable) = acceptable.as_array() else {
-                        return Err(ErrorKind::SchemesMustBeArray(acceptable.clone()));
+                        return Err(ParseRouteErrorKind::SchemesMustBeArray(acceptable.clone()));
                     };
 
                     for scheme in acceptable {
@@ -374,18 +390,24 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                                                     PermissionKind::Acceptable,
                                                     scheme::Kind::try_from(scheme.to_owned())?,
                                                 ));
+
+                                            continue;
                                         }
                                         None => {
-                                            return Err(ErrorKind::SchemeExactMustBeString(
-                                                exact.clone(),
-                                            ))
+                                            return Err(
+                                                ParseRouteErrorKind::SchemeExactMustBeString(
+                                                    exact.clone(),
+                                                ),
+                                            )
                                         }
                                     }
-                                } else {
-                                    event!(Level::TRACE, "Scheme exact not found");
                                 }
+
+                                event!(Level::TRACE, "Scheme exact not found");
                             }
-                            None => return Err(ErrorKind::SchemeMustBeTable(scheme.clone())),
+                            None => {
+                                return Err(ParseRouteErrorKind::SchemeMustBeTable(scheme.clone()))
+                            }
                         }
                     }
                 }
@@ -399,7 +421,9 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                     event!(Level::TRACE, "Parse unacceptable schemes");
 
                     let Some(unacceptable) = unacceptable.as_array() else {
-                        return Err(ErrorKind::SchemesMustBeArray(unacceptable.clone()));
+                        return Err(ParseRouteErrorKind::SchemesMustBeArray(
+                            unacceptable.clone(),
+                        ));
                     };
 
                     for scheme in unacceptable {
@@ -413,18 +437,24 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                                                     PermissionKind::Unacceptable,
                                                     scheme::Kind::try_from(scheme.to_owned())?,
                                                 ));
+
+                                            continue;
                                         }
                                         None => {
-                                            return Err(ErrorKind::SchemeExactMustBeString(
-                                                exact.clone(),
-                                            ))
+                                            return Err(
+                                                ParseRouteErrorKind::SchemeExactMustBeString(
+                                                    exact.clone(),
+                                                ),
+                                            )
                                         }
                                     }
-                                } else {
-                                    event!(Level::TRACE, "Scheme exact not found");
                                 }
+
+                                event!(Level::TRACE, "Scheme exact not found");
                             }
-                            None => return Err(ErrorKind::SchemeMustBeTable(scheme.clone())),
+                            None => {
+                                return Err(ParseRouteErrorKind::SchemeMustBeTable(scheme.clone()))
+                            }
                         }
                     }
                 }
@@ -443,7 +473,7 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
             event!(Level::TRACE, "Parse ports");
 
             let Some(ports) = ports.as_table() else {
-                return Err(ErrorKind::PortsMustBeTable(ports.clone()));
+                return Err(ParseRouteErrorKind::PortsMustBeTable(ports.clone()));
             };
 
             match ports.get("acceptable") {
@@ -451,7 +481,7 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                     event!(Level::TRACE, "Parse acceptable ports");
 
                     let Some(acceptable) = acceptable.as_array() else {
-                        return Err(ErrorKind::PortsMustBeArray(acceptable.clone()));
+                        return Err(ParseRouteErrorKind::PortsMustBeArray(acceptable.clone()));
                     };
 
                     for port in acceptable {
@@ -462,14 +492,15 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                                         Some(port) => {
                                             route_builder = route_builder.port(port::Matcher::new(
                                                 PermissionKind::Acceptable,
-                                                port::Kind::glob(port)
-                                                    .map_err(ErrorKind::PortGlobPattern)?,
+                                                port::Kind::glob(port).map_err(
+                                                    ParseRouteErrorKind::PortGlobPattern,
+                                                )?,
                                             ));
 
                                             continue;
                                         }
                                         None => {
-                                            return Err(ErrorKind::PortGlobMustBeString(
+                                            return Err(ParseRouteErrorKind::PortGlobMustBeString(
                                                 glob.clone(),
                                             ))
                                         }
@@ -482,8 +513,9 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                                     if let Some(port) = exact.as_str() {
                                         route_builder = route_builder.port(port::Matcher::new(
                                             PermissionKind::Acceptable,
-                                            port::Kind::exact_str(port)
-                                                .map_err(ErrorKind::PortExactParseError)?,
+                                            port::Kind::exact_str(port).map_err(
+                                                ParseRouteErrorKind::PortExactParseError,
+                                            )?,
                                         ));
 
                                         continue;
@@ -501,14 +533,14 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                                         continue;
                                     }
 
-                                    return Err(ErrorKind::PortExactMustBeStringOrInt(
+                                    return Err(ParseRouteErrorKind::PortExactMustBeStringOrInt(
                                         exact.clone(),
                                     ));
                                 }
 
                                 event!(Level::TRACE, "Port exact not found");
                             }
-                            None => return Err(ErrorKind::PortMustBeTable(port.clone())),
+                            None => return Err(ParseRouteErrorKind::PortMustBeTable(port.clone())),
                         }
                     }
                 }
@@ -522,7 +554,7 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                     event!(Level::TRACE, "Parse unacceptable ports");
 
                     let Some(unacceptable) = unacceptable.as_array() else {
-                        return Err(ErrorKind::PortsMustBeArray(unacceptable.clone()));
+                        return Err(ParseRouteErrorKind::PortsMustBeArray(unacceptable.clone()));
                     };
 
                     for port in unacceptable {
@@ -533,14 +565,15 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                                         Some(port) => {
                                             route_builder = route_builder.port(port::Matcher::new(
                                                 PermissionKind::Unacceptable,
-                                                port::Kind::glob(port)
-                                                    .map_err(ErrorKind::PortGlobPattern)?,
+                                                port::Kind::glob(port).map_err(
+                                                    ParseRouteErrorKind::PortGlobPattern,
+                                                )?,
                                             ));
 
                                             continue;
                                         }
                                         None => {
-                                            return Err(ErrorKind::PortGlobMustBeString(
+                                            return Err(ParseRouteErrorKind::PortGlobMustBeString(
                                                 glob.clone(),
                                             ))
                                         }
@@ -553,8 +586,9 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                                     if let Some(port) = exact.as_str() {
                                         route_builder = route_builder.port(port::Matcher::new(
                                             PermissionKind::Unacceptable,
-                                            port::Kind::exact_str(port)
-                                                .map_err(ErrorKind::PortExactParseError)?,
+                                            port::Kind::exact_str(port).map_err(
+                                                ParseRouteErrorKind::PortExactParseError,
+                                            )?,
                                         ));
 
                                         continue;
@@ -572,14 +606,14 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                                         continue;
                                     }
 
-                                    return Err(ErrorKind::PortExactMustBeStringOrInt(
+                                    return Err(ParseRouteErrorKind::PortExactMustBeStringOrInt(
                                         exact.clone(),
                                     ));
                                 }
 
                                 event!(Level::TRACE, "Port exact not found");
                             }
-                            None => return Err(ErrorKind::PortMustBeTable(port.clone())),
+                            None => return Err(ParseRouteErrorKind::PortMustBeTable(port.clone())),
                         }
                     }
                 }
@@ -598,7 +632,7 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
             event!(Level::TRACE, "Parse paths");
 
             let Some(paths) = paths.as_table() else {
-                return Err(ErrorKind::PathsMustBeTable(paths.clone()));
+                return Err(ParseRouteErrorKind::PathsMustBeTable(paths.clone()));
             };
 
             match paths.get("acceptable") {
@@ -606,7 +640,7 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                     event!(Level::TRACE, "Parse acceptable paths");
 
                     let Some(acceptable) = acceptable.as_array() else {
-                        return Err(ErrorKind::PathsMustBeArray(acceptable.clone()));
+                        return Err(ParseRouteErrorKind::PathsMustBeArray(acceptable.clone()));
                     };
 
                     for path in acceptable {
@@ -617,14 +651,15 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                                         Some(path) => {
                                             route_builder = route_builder.path(path::Matcher::new(
                                                 PermissionKind::Acceptable,
-                                                path::Kind::glob(path)
-                                                    .map_err(ErrorKind::PathGlobPattern)?,
+                                                path::Kind::glob(path).map_err(
+                                                    ParseRouteErrorKind::PathGlobPattern,
+                                                )?,
                                             ));
 
                                             continue;
                                         }
                                         None => {
-                                            return Err(ErrorKind::PathGlobMustBeString(
+                                            return Err(ParseRouteErrorKind::PathGlobMustBeString(
                                                 glob.clone(),
                                             ))
                                         }
@@ -640,18 +675,20 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                                                 PermissionKind::Acceptable,
                                                 path::Kind::exact(path),
                                             ));
+
+                                            continue;
                                         }
                                         None => {
-                                            return Err(ErrorKind::PathExactMustBeString(
+                                            return Err(ParseRouteErrorKind::PathExactMustBeString(
                                                 exact.clone(),
                                             ))
                                         }
                                     }
-                                } else {
-                                    event!(Level::TRACE, "Path exact not found");
                                 }
+
+                                event!(Level::TRACE, "Path exact not found");
                             }
-                            None => return Err(ErrorKind::PathMustBeTable(path.clone())),
+                            None => return Err(ParseRouteErrorKind::PathMustBeTable(path.clone())),
                         }
                     }
                 }
@@ -665,7 +702,7 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                     event!(Level::TRACE, "Parse unacceptable paths");
 
                     let Some(unacceptable) = unacceptable.as_array() else {
-                        return Err(ErrorKind::PathsMustBeArray(unacceptable.clone()));
+                        return Err(ParseRouteErrorKind::PathsMustBeArray(unacceptable.clone()));
                     };
 
                     for path in unacceptable {
@@ -676,14 +713,15 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                                         Some(path) => {
                                             route_builder = route_builder.path(path::Matcher::new(
                                                 PermissionKind::Unacceptable,
-                                                path::Kind::glob(path)
-                                                    .map_err(ErrorKind::PathGlobPattern)?,
+                                                path::Kind::glob(path).map_err(
+                                                    ParseRouteErrorKind::PathGlobPattern,
+                                                )?,
                                             ));
 
                                             continue;
                                         }
                                         None => {
-                                            return Err(ErrorKind::PathGlobMustBeString(
+                                            return Err(ParseRouteErrorKind::PathGlobMustBeString(
                                                 glob.clone(),
                                             ))
                                         }
@@ -699,18 +737,20 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
                                                 PermissionKind::Unacceptable,
                                                 path::Kind::exact(path),
                                             ));
+
+                                            continue;
                                         }
                                         None => {
-                                            return Err(ErrorKind::PathExactMustBeString(
+                                            return Err(ParseRouteErrorKind::PathExactMustBeString(
                                                 exact.clone(),
                                             ))
                                         }
                                     }
-                                } else {
-                                    event!(Level::TRACE, "Path exact not found");
                                 }
+
+                                event!(Level::TRACE, "Path exact not found");
                             }
-                            None => return Err(ErrorKind::PathMustBeTable(path.clone())),
+                            None => return Err(ParseRouteErrorKind::PathMustBeTable(path.clone())),
                         }
                     }
                 }
@@ -724,7 +764,421 @@ pub fn parse_rules_from_toml(raw: &str) -> Result<Rules, ErrorKind> {
         }
     }
 
-    rules_builder = rules_builder.route(route_builder.build());
+    Ok(route_builder.build())
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ParsePollingErrorKind {
+    #[error("Parse toml error: {0}")]
+    ParseToml(#[from] toml::de::Error),
+
+    #[error("Config must be a table, found {0}")]
+    ConfigMustBeTable(Value),
+    #[error("Polling not found in table: {0}")]
+    PollingNotFound(Map<String, Value>),
+    #[error("Polling must be a table, found {0}")]
+    PollingMustBeTable(Value),
+
+    #[error("Redirections must be a table, found {0}")]
+    RedirectionsMustBeTable(Value),
+    #[error("Redirections acceptable not found in table: {0}")]
+    RedirectionsAcceptableNotFound(Map<String, Value>),
+    #[error("Redirections acceptable must be a bool, found {0}")]
+    RedirectionsAcceptableMustBeBool(Value),
+    #[error("Redirections max redirects not found in table: {0}")]
+    RedirectionsMaxRedirectsNotFound(Map<String, Value>),
+    #[error(
+        "Redirections max redirects must be an int or a string that represents an int, found {0}"
+    )]
+    RedirectionsMaxRedirectsMustBeStringOrInt(Value),
+
+    #[error("Depth must be a table, found {0}")]
+    DepthMustBeTable(Value),
+    #[error("Depth acceptable not found in table: {0}")]
+    DepthAcceptableNotFound(Map<String, Value>),
+    #[error("Depth acceptable must be a bool, found {0}")]
+    DepthAcceptableMustBeBool(Value),
+    #[error("Depth max redirects not found in table: {0}")]
+    DepthMaxRedirectsNotFound(Map<String, Value>),
+    #[error("Depth max depth must be an int or a string that represents an int, found {0}")]
+    DepthMaxDepthMustBeStringOrInt(Value),
+
+    #[error("Time must be a table, found {0}")]
+    TimeMustBeTable(Value),
+    #[error("Min sleep between requests not found in table: {0}")]
+    MinSleepBetweenRequestsNotFound(Map<String, Value>),
+    #[error("Min sleep between requests value must be an int or a string that represents an int, found {0}")]
+    MinSleepBetweenRequestsMustBeStringOrInt(Value),
+    #[error("Max sleep between requests not found in table: {0}")]
+    MaxSleepBetweenRequestsNotFound(Map<String, Value>),
+    #[error("Max sleep between requests value must be an int or a string that represents an int, found {0}")]
+    MaxSleepBetweenRequestsMustBeStringOrInt(Value),
+    #[error("Request timeout not found in table: {0}")]
+    RequestTimeoutNotFound(Map<String, Value>),
+    #[error("Request timeout value must be an int or a string that represents an int, found {0}")]
+    RequestTimeoutMustBeStringOrInt(Value),
+
+    #[error("User agents must be an array, found {0}")]
+    UserAgentsMustBeArray(Value),
+    #[error("User agent must be a table, found {0}")]
+    UserAgentMustBeTable(Value),
+    #[error("User agent value must be a string, found {0}")]
+    UserAgentValueMustBeString(Value),
+
+    #[error("Proxies must be an array, found {0}")]
+    ProxiesMustBeArray(Value),
+    #[error("Proxy must be a table, found {0}")]
+    ProxyMustBeTable(Value),
+    #[error("Proxy value must be a string, found {0}")]
+    ProxyValueMustBeString(Value),
+}
+
+/// Parse polling from toml
+/// # Arguments
+/// * `raw` - Raw toml string
+/// # Returns
+/// Returns [`Polling`] if parsing is successful and all polling are valid, otherwise returns [`ParsePollingErrorKind`].
+/// # Panics
+/// - If the max redirects is not between 0 and 65535
+/// - If the max depth is not between 0 and 65535
+/// - If the min sleep between requests is not between 0 and 18446744073709551615
+/// - If the max sleep between requests is not between 0 and 18446744073709551615
+/// - If the request timeout is not between 0 and 18446744073709551615
+pub fn parse_polling_from_toml(raw: &str) -> Result<Polling, ParsePollingErrorKind> {
+    event!(Level::DEBUG, "Parse polling from toml");
+
+    let value = raw.parse::<Value>()?;
+    let Some(table) = value.as_table() else {
+        return Err(ParsePollingErrorKind::ConfigMustBeTable(value));
+    };
+
+    let polling = match table.get("polling") {
+        Some(polling) => match polling.as_table() {
+            Some(polling) => polling,
+            None => return Err(ParsePollingErrorKind::PollingMustBeTable(polling.clone())),
+        },
+        None => return Err(ParsePollingErrorKind::PollingNotFound(table.clone())),
+    };
+
+    let mut polling_builder = Polling::builder();
+
+    match polling.get("redirections") {
+        Some(redirections) => {
+            event!(Level::TRACE, "Parse redirections");
+
+            let Some(redirections) = redirections.as_table() else {
+                return Err(ParsePollingErrorKind::RedirectionsMustBeTable(
+                    redirections.clone(),
+                ));
+            };
+
+            let acceptable = if let Some(acceptable) = redirections.get("acceptable") {
+                if let Some(acceptable) = acceptable.as_bool() {
+                    acceptable
+                } else {
+                    return Err(ParsePollingErrorKind::RedirectionsAcceptableMustBeBool(
+                        acceptable.clone(),
+                    ));
+                }
+            } else {
+                return Err(ParsePollingErrorKind::RedirectionsAcceptableNotFound(
+                    redirections.clone(),
+                ));
+            };
+
+            let max_redirects = if let Some(max_redirects) = redirections.get("max_redirects") {
+                if let Some(max_redirects_str) = max_redirects.as_str() {
+                    max_redirects_str.parse::<u16>().map_err(|_| {
+                        ParsePollingErrorKind::RedirectionsMaxRedirectsMustBeStringOrInt(
+                            max_redirects.clone(),
+                        )
+                    })?
+                } else if let Some(max_redirects) = max_redirects.as_integer() {
+                    u16::try_from(max_redirects).expect("Max redirects must be between 0 and 65535")
+                } else {
+                    return Err(
+                        ParsePollingErrorKind::RedirectionsMaxRedirectsMustBeStringOrInt(
+                            max_redirects.clone(),
+                        ),
+                    );
+                }
+            } else {
+                return Err(ParsePollingErrorKind::RedirectionsMaxRedirectsNotFound(
+                    redirections.clone(),
+                ));
+            };
+
+            polling_builder = polling_builder
+                .redirections(redirections::Redirections::new(acceptable, max_redirects));
+        }
+        None => {
+            event!(Level::TRACE, "Redirections not found");
+        }
+    }
+
+    match polling.get("depth") {
+        Some(depth) => {
+            event!(Level::TRACE, "Parse depth");
+
+            let Some(depth) = depth.as_table() else {
+                return Err(ParsePollingErrorKind::DepthMustBeTable(depth.clone()));
+            };
+
+            let acceptable = if let Some(acceptable) = depth.get("acceptable") {
+                if let Some(acceptable) = acceptable.as_bool() {
+                    acceptable
+                } else {
+                    return Err(ParsePollingErrorKind::DepthAcceptableMustBeBool(
+                        acceptable.clone(),
+                    ));
+                }
+            } else {
+                return Err(ParsePollingErrorKind::DepthAcceptableNotFound(
+                    depth.clone(),
+                ));
+            };
+
+            let max_depth = if let Some(max_depth) = depth.get("max_depth") {
+                if let Some(max_depth_str) = max_depth.as_str() {
+                    max_depth_str.parse::<u16>().map_err(|_| {
+                        ParsePollingErrorKind::DepthMaxDepthMustBeStringOrInt(max_depth.clone())
+                    })?
+                } else if let Some(max_depth) = max_depth.as_integer() {
+                    u16::try_from(max_depth).expect("Max depth must be between 0 and 65535")
+                } else {
+                    return Err(ParsePollingErrorKind::DepthMaxDepthMustBeStringOrInt(
+                        max_depth.clone(),
+                    ));
+                }
+            } else {
+                return Err(ParsePollingErrorKind::DepthMaxRedirectsNotFound(
+                    depth.clone(),
+                ));
+            };
+
+            polling_builder = polling_builder.depth(depth::Depth::new(acceptable, max_depth));
+        }
+        None => {
+            event!(Level::TRACE, "Depth not found");
+        }
+    }
+
+    match polling.get("time") {
+        Some(time) => {
+            event!(Level::TRACE, "Parse time");
+
+            let Some(time) = time.as_table() else {
+                return Err(ParsePollingErrorKind::TimeMustBeTable(time.clone()));
+            };
+
+            let min_sleep_between_requests = if let Some(min_sleep_between_requests) =
+                time.get("min_sleep_between_requests")
+            {
+                if let Some(min_sleep_between_requests_str) = min_sleep_between_requests.as_str() {
+                    min_sleep_between_requests_str.parse::<u64>().map_err(|_| {
+                        ParsePollingErrorKind::MinSleepBetweenRequestsMustBeStringOrInt(
+                            min_sleep_between_requests.clone(),
+                        )
+                    })?
+                } else if let Some(min_sleep_between_requests) =
+                    min_sleep_between_requests.as_integer()
+                {
+                    u64::try_from(min_sleep_between_requests).expect(
+                        "Min sleep between requests must be between 0 and 18446744073709551615",
+                    )
+                } else {
+                    return Err(
+                        ParsePollingErrorKind::MinSleepBetweenRequestsMustBeStringOrInt(
+                            min_sleep_between_requests.clone(),
+                        ),
+                    );
+                }
+            } else {
+                return Err(ParsePollingErrorKind::MinSleepBetweenRequestsNotFound(
+                    time.clone(),
+                ));
+            };
+
+            let max_sleep_between_requests = if let Some(max_sleep_between_requests) =
+                time.get("max_sleep_between_requests")
+            {
+                if let Some(max_sleep_between_requests_str) = max_sleep_between_requests.as_str() {
+                    max_sleep_between_requests_str.parse::<u64>().map_err(|_| {
+                        ParsePollingErrorKind::MaxSleepBetweenRequestsMustBeStringOrInt(
+                            max_sleep_between_requests.clone(),
+                        )
+                    })?
+                } else if let Some(max_sleep_between_requests) =
+                    max_sleep_between_requests.as_integer()
+                {
+                    u64::try_from(max_sleep_between_requests).expect(
+                        "Max sleep between requests must be between 0 and 18446744073709551615",
+                    )
+                } else {
+                    return Err(
+                        ParsePollingErrorKind::MaxSleepBetweenRequestsMustBeStringOrInt(
+                            max_sleep_between_requests.clone(),
+                        ),
+                    );
+                }
+            } else {
+                return Err(ParsePollingErrorKind::MaxSleepBetweenRequestsNotFound(
+                    time.clone(),
+                ));
+            };
+
+            let request_timeout = if let Some(request_timeout) = time.get("request_timeout") {
+                if let Some(request_timeout_str) = request_timeout.as_str() {
+                    request_timeout_str.parse::<u64>().map_err(|_| {
+                        ParsePollingErrorKind::RequestTimeoutMustBeStringOrInt(
+                            request_timeout.clone(),
+                        )
+                    })?
+                } else if let Some(request_timeout) = request_timeout.as_integer() {
+                    u64::try_from(request_timeout)
+                        .expect("Request timeout must be between 0 and 18446744073709551615")
+                } else {
+                    return Err(ParsePollingErrorKind::RequestTimeoutMustBeStringOrInt(
+                        request_timeout.clone(),
+                    ));
+                }
+            } else {
+                return Err(ParsePollingErrorKind::RequestTimeoutNotFound(time.clone()));
+            };
+
+            polling_builder = polling_builder.time(time::Time::new(
+                min_sleep_between_requests,
+                max_sleep_between_requests,
+                request_timeout,
+            ));
+        }
+        None => {
+            event!(Level::TRACE, "Time not found");
+        }
+    }
+
+    match polling.get("user_agents") {
+        Some(user_agents) => {
+            event!(Level::TRACE, "Parse user agents");
+
+            let Some(user_agents) = user_agents.as_array() else {
+                return Err(ParsePollingErrorKind::UserAgentsMustBeArray(
+                    user_agents.clone(),
+                ));
+            };
+
+            for user_agent in user_agents {
+                match user_agent.as_table() {
+                    Some(user_agent) => {
+                        if let Some(value) = user_agent.get("value") {
+                            if let Some(value) = value.as_str() {
+                                polling_builder = polling_builder
+                                    .user_agent(user_agent::UserAgent::new(value.to_owned()));
+
+                                continue;
+                            }
+
+                            return Err(ParsePollingErrorKind::UserAgentValueMustBeString(
+                                value.clone(),
+                            ));
+                        }
+
+                        event!(Level::TRACE, "User agent value not found");
+                    }
+                    None => {
+                        return Err(ParsePollingErrorKind::UserAgentMustBeTable(
+                            user_agent.clone(),
+                        ))
+                    }
+                }
+            }
+        }
+        None => {
+            event!(Level::TRACE, "User agents not found");
+        }
+    }
+
+    match polling.get("proxies") {
+        Some(proxies) => {
+            event!(Level::TRACE, "Parse proxies");
+
+            let Some(proxies) = proxies.as_array() else {
+                return Err(ParsePollingErrorKind::ProxiesMustBeArray(proxies.clone()));
+            };
+
+            for proxy in proxies {
+                match proxy.as_table() {
+                    Some(proxy) => {
+                        if let Some(value) = proxy.get("value") {
+                            if let Some(value) = value.as_str() {
+                                polling_builder =
+                                    polling_builder.proxy(proxy::Proxy::new(value.to_owned()));
+
+                                continue;
+                            }
+
+                            return Err(ParsePollingErrorKind::ProxyValueMustBeString(
+                                value.clone(),
+                            ));
+                        }
+
+                        event!(Level::TRACE, "Proxy value not found");
+                    }
+                    None => return Err(ParsePollingErrorKind::ProxyMustBeTable(proxy.clone())),
+                }
+            }
+        }
+        None => {
+            event!(Level::TRACE, "Proxies not found");
+        }
+    }
+
+    Ok(polling_builder.build())
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ErrorKind {
+    #[error("Read file error: {0}")]
+    ReadFile(#[from] io::Error),
+    #[error(transparent)]
+    ParseRoute(#[from] ParseRouteErrorKind),
+    #[error(transparent)]
+    ParsePolling(#[from] ParsePollingErrorKind),
+}
+
+/// Parse rules from toml file
+/// # Arguments
+/// * `route_path` - Path to route toml file
+/// * `polling_path` - Path to polling toml file
+/// # Returns
+/// Returns [`Rules`] if parsing is successful and all rules are valid, otherwise returns [`ErrorKind`].
+/// # Panics
+/// - If the port number is not between 0 and 65535
+/// - If the max redirects is not between 0 and 65535
+/// - If the max depth is not between 0 and 65535
+/// - If the min sleep between requests is not between 0 and 18446744073709551615
+/// - If the max sleep between requests is not between 0 and 18446744073709551615
+/// - If the request timeout is not between 0 and 18446744073709551615
+#[instrument(skip_all)]
+pub fn parse_rules_from_toml_file(
+    route_path: impl AsRef<Path>,
+    polling_path: impl AsRef<Path>,
+) -> Result<Rules, ErrorKind> {
+    let route_path = route_path.as_ref();
+    let polling_path = polling_path.as_ref();
+
+    Span::current()
+        .record("route_path", field::debug(route_path))
+        .record("polling_path", field::debug(polling_path));
+
+    event!(Level::DEBUG, "Parse rules from toml file");
+
+    let route_raw = fs::read_to_string(route_path)?;
+    let polling_raw = fs::read_to_string(polling_path)?;
+
+    let rules_builder = Rules::builder()
+        .route(parse_route_from_toml(&route_raw)?)
+        .polling(parse_polling_from_toml(&polling_raw)?);
 
     Ok(rules_builder.build())
 }
@@ -737,10 +1191,8 @@ mod tests {
     use url::Host;
 
     #[test]
-    fn test_parse_rules_from_toml() {
+    fn test_parse_route_from_toml() {
         let raw = r#"
-            title = "Route rules"
-
             [routes]
 
             [[routes.hosts.acceptable]]
@@ -797,8 +1249,7 @@ mod tests {
             exact = "POST"
         "#;
 
-        let rules = parse_rules_from_toml(raw).unwrap();
-        let route = rules.route;
+        let route = parse_route_from_toml(raw).unwrap();
 
         assert_eq!(route.hosts.acceptable.len(), 2);
         assert_eq!(
@@ -850,5 +1301,56 @@ mod tests {
         assert_eq!(route.methods.acceptable[1], method::Kind::Patch);
         assert_eq!(route.methods.unacceptable.len(), 1);
         assert_eq!(route.methods.unacceptable[0], method::Kind::Post);
+    }
+
+    #[test]
+    fn test_parse_polling_from_toml() {
+        let raw = r#"
+            [polling]
+
+            [polling.redirections]
+            acceptable = true
+            max_redirects = 10
+
+            [polling.depth]
+            acceptable = true
+            max_depth = 10
+
+            [polling.time]
+            min_sleep_between_requests = 1000
+            max_sleep_between_requests = 10000
+            request_timeout = 1000
+
+            [[polling.user_agents]]
+            value = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
+
+            [[polling.user_agents]]
+
+            [[polling.proxies]]
+            value = "http://"
+
+            [[polling.proxies]]
+        "#;
+
+        let polling = parse_polling_from_toml(raw).unwrap();
+
+        assert_eq!(polling.redirections.acceptable, true);
+        assert_eq!(polling.redirections.max_redirects, 10);
+
+        assert_eq!(polling.depth.acceptable, true);
+        assert_eq!(polling.depth.max_depth, 10);
+
+        assert_eq!(polling.time.min_sleep_between_requests, 1000);
+        assert_eq!(polling.time.max_sleep_between_requests, 10000);
+        assert_eq!(polling.time.request_timeout, 1000);
+
+        assert_eq!(polling.user_agents.len(), 1);
+        assert_eq!(
+            **(*polling.user_agents).first().unwrap(),
+            "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
+        );
+
+        assert_eq!(polling.proxies.len(), 1);
+        assert_eq!(**(*polling.proxies).first().unwrap(), "http://");
     }
 }

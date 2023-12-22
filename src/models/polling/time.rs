@@ -24,10 +24,7 @@ impl Time {
     pub fn get_random_sleep_between_requests_raw(&self) -> u64 {
         let mut rng = thread_rng();
 
-        let sleep_between_requests =
-            rng.gen_range(self.min_sleep_between_requests..=self.max_sleep_between_requests);
-
-        sleep_between_requests
+        rng.gen_range(self.min_sleep_between_requests..=self.max_sleep_between_requests)
     }
 
     pub fn get_random_sleep_between_requests(&self) -> Duration {
