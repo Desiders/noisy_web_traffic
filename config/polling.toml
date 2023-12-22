@@ -1,0 +1,47 @@
+[polling]
+
+# Polling redirections configuration
+# Acceptable means that redirections may be used. If acceptable is `false`, redirections will not be used.
+# Max redirects is the maximum number of redirections that may be followed. If the number of redirections exceeds this number, the polling finish.
+# Min redirects value is 0. Max redirects value is 65535.
+[polling.redirections]
+acceptable = true
+max_redirects = 5
+
+# Polling depth configuration
+# Acceptable means that depth may be used. If acceptable is `false`, depth will not be used.
+# Max depth is the maximum depth of the polling between the root and the current page. If the depth exceeds this number, the polling finish.
+# Min depth value is 0. Max depth value is 65535.
+[polling.depth]
+acceptable = true
+max_depth = 7
+
+# Polling time configuration
+# All times are measured in milliseconds. Min time value is 0. Max time value is 18446744073709551615.
+# Min sleep between requests is the minimum time between two requests.
+# Max sleep between requests is the maximum time between two requests.
+# The sleep time is calculated randomly between the minimum and the maximum. 
+# Request timeout is the maximum time that the polling will wait for a response from the server. If the timeout is exceeded, the polling will be stopped.
+[polling.time]
+min_sleep_between_requests = 3000
+max_sleep_between_requests = 60000
+request_timeout = 7000
+
+# Polling user agent configuration
+# User agent is the string that is sent to the server to identify the client.
+# User agent is randomly selected from the list of user agents.
+# If the list is empty, the default user agent will be used.
+[[polling.user_agents]]
+value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3679.0 Safari/537.36"
+
+[[polling.user_agents]]
+value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:64.0) Gecko/20100101 Firefox/64.0"
+
+[[polling.user_agents]]
+value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:63.0) Gecko/20100101 Firefox/63.0"
+
+# Polling proxy configuration
+# Proxy is the server that is used to connect to the Internet.
+# Proxy is randomly selected from the list of proxies.
+# If the list is empty, the polling will be performed without a proxy.
+[[polling.proxies]]
