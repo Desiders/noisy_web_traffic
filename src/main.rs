@@ -1,46 +1,49 @@
-mod client;
-mod config_reader;
-mod crawl;
-mod logger;
-mod machine_config;
+mod clients;
+mod config;
+mod crawlers;
+mod models;
 mod parser;
+mod polling;
+mod validation;
 
-use client::Client;
-use config_reader::parse_config;
-use log::info;
-use machine_config::{create_config, write_blacklist_urls};
-use rand::{seq::SliceRandom, thread_rng};
+use clients::reqwest::Reqwest;
+use config::parser::parse_rules_from_toml_file;
+use polling::Polling;
 
-fn main() {
-    logger::init();
+use std::error::Error;
+use tracing::{event, Level};
+use tracing_subscriber::{fmt, layer::SubscriberExt as _, util::SubscriberInitExt as _, EnvFilter};
 
-    let config = parse_config("./config.yaml").expect("Failed to parse config");
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<(), Box<dyn Error>> {
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(EnvFilter::from_env("RUST_LOG"))
+        .init();
 
-    let machine_config_path = format!("./{}.json", config.machine_config.name);
+    event!(Level::INFO, "Starting up");
 
-    create_config(&machine_config_path).expect("Failed to create machine config");
+    let route_config_path = "./config/route.toml";
+    let polling_config_path = "./config/polling.toml";
 
-    write_blacklist_urls(
-        &machine_config_path,
-        &[],
-        &config.urls.blacklist.childs,
-        &config.urls.blacklist.hrefs,
-        &config.urls.blacklist.types,
-    )
-    .expect("Failed to write blacklist URLs");
-
-    let client = Client::new(
-        config.client.max_timeout,
-        config.client.max_redirections,
-        &config.user_agent.current,
-        config.user_agent.generate,
+    event!(
+        Level::INFO,
+        %route_config_path,
+        %polling_config_path,
+        "Parsing rules"
     );
-    let mut roots = config.urls.roots.clone();
 
-    info!("Starting crawl URLs");
-    loop {
-        roots.shuffle(&mut thread_rng());
+    let rules = parse_rules_from_toml_file(route_config_path, polling_config_path)?;
 
-        crawl::run(&client, &config, &roots, &machine_config_path);
-    }
+    event!(Level::INFO, %rules, "Rules parsed");
+
+    let client = Reqwest::default().unwrap();
+
+    let polling = Polling::new(client, rules.route, rules.polling);
+
+    event!(Level::INFO, "Starting polling");
+
+    polling.run().await?;
+
+    unreachable!("Polling should never stop without an error")
 }
