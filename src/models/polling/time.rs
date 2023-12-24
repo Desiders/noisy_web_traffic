@@ -1,5 +1,8 @@
 use rand::{thread_rng, Rng as _};
-use std::time::Duration;
+use std::{
+    fmt::{self, Display, Formatter},
+    time::Duration,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Time {
@@ -29,6 +32,16 @@ impl Time {
 
     pub fn get_random_sleep_between_requests(&self) -> Duration {
         Duration::from_millis(self.get_random_sleep_between_requests_raw())
+    }
+}
+
+impl Display for Time {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Time {{ min sleep: {}, max_sleep: {}, request_timeout: {} }}",
+            self.min_sleep_between_requests, self.max_sleep_between_requests, self.request_timeout
+        )
     }
 }
 

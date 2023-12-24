@@ -3,6 +3,8 @@ use super::{
     permission::Kind as PermissionKind,
 };
 
+use std::fmt::{self, Display, Formatter};
+
 #[derive(Debug, Default, Clone)]
 pub struct Hosts {
     pub acceptable: Vec<Kind>,
@@ -52,6 +54,33 @@ impl Hosts {
         let matched_none = self.unacceptable.iter().any(|kind| kind.matches(host));
 
         !matched_none
+    }
+}
+
+impl Display for Hosts {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut acceptable = self
+            .acceptable
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+
+        acceptable.sort();
+
+        let mut unacceptable = self
+            .unacceptable
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+
+        unacceptable.sort();
+
+        write!(
+            f,
+            "Hosts {{ acceptable: [{}], unacceptable: [{}] }}",
+            acceptable.join(", "),
+            unacceptable.join(", "),
+        )
     }
 }
 

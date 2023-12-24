@@ -1,12 +1,16 @@
 use crate::models::routes::{
-    host, hosts::Hosts, method, methods::Methods, path, paths::Paths, port, ports::Ports, scheme,
-    schemes::Schemes,
+    host, hosts::Hosts, method, methods::Methods, path, paths::Paths, port, ports::Ports, root_url,
+    root_urls::RootUrls, scheme, schemes::Schemes,
 };
 
-use std::iter;
+use std::{
+    fmt::{self, Display, Formatter},
+    iter,
+};
 
 #[derive(Debug, Clone)]
 pub struct Route {
+    pub root_urls: RootUrls,
     pub hosts: Hosts,
     pub methods: Methods,
     pub paths: Paths,
@@ -16,6 +20,7 @@ pub struct Route {
 
 impl Route {
     pub fn new(
+        root_urls: RootUrls,
         mut hosts: Hosts,
         mut methods: Methods,
         mut paths: Paths,
@@ -43,6 +48,7 @@ impl Route {
         }
 
         Self {
+            root_urls,
             hosts,
             methods,
             paths,
@@ -80,9 +86,20 @@ impl Route {
     }
 }
 
+impl Display for Route {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Route {{ root_urls: {}, hosts: {}, methods: {}, paths: {}, ports: {}, schemes: {} }}",
+            self.root_urls, self.hosts, self.methods, self.paths, self.ports, self.schemes,
+        )
+    }
+}
+
 impl Default for Route {
     fn default() -> Self {
         Self::new(
+            RootUrls::default(),
             Hosts::default(),
             Methods::default(),
             Paths::default(),
@@ -94,14 +111,25 @@ impl Default for Route {
 
 #[derive(Debug, Default, Clone)]
 pub struct Builder {
-    pub hosts: Hosts,
-    pub methods: Methods,
-    pub paths: Paths,
-    pub ports: Ports,
-    pub schemes: Schemes,
+    root_urls: RootUrls,
+    hosts: Hosts,
+    methods: Methods,
+    paths: Paths,
+    ports: Ports,
+    schemes: Schemes,
 }
 
 impl Builder {
+    pub fn root_urls(mut self, root_urls: impl IntoIterator<Item = root_url::RootUrl>) -> Self {
+        self.root_urls.extend(root_urls);
+        self
+    }
+
+    pub fn root_url(mut self, root_url: root_url::RootUrl) -> Self {
+        self.root_urls.extend(iter::once(root_url));
+        self
+    }
+
     pub fn hosts(mut self, hosts: impl IntoIterator<Item = host::Matcher>) -> Self {
         self.hosts.extend(hosts);
         self
@@ -154,6 +182,7 @@ impl Builder {
 
     pub fn build(self) -> Route {
         Route::new(
+            self.root_urls,
             self.hosts,
             self.methods,
             self.paths,
@@ -172,6 +201,7 @@ mod tests {
     #[test]
     fn test_route_builder() {
         let route = Route::builder()
+            .root_url(root_url::RootUrl::new("https://example.com").unwrap())
             .host(host::Matcher::new(
                 PermissionKind::Acceptable,
                 host::Kind::exact("example.com").unwrap(),
@@ -193,6 +223,12 @@ mod tests {
                 scheme::Kind::Http,
             ))
             .build();
+
+        assert_eq!(route.root_urls.len(), 1);
+        assert_eq!(
+            route.root_urls[0],
+            root_url::RootUrl::new("https://example.com").unwrap()
+        );
 
         assert_eq!(route.hosts.acceptable.len(), 1);
         assert_eq!(

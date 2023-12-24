@@ -1,12 +1,23 @@
 use super::permission::Kind as PermissionKind;
 
 use glob::{Pattern, PatternError};
+use std::fmt::{self, Display, Formatter};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Kind {
     Glob(Pattern),
     Exact(String),
     Any,
+}
+
+impl Display for Kind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Glob(pattern) => pattern.fmt(f),
+            Self::Exact(exact) => exact.fmt(f),
+            Self::Any => "*".fmt(f),
+        }
+    }
 }
 
 impl Kind {

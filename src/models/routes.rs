@@ -7,5 +7,7 @@ pub mod paths;
 pub mod permission;
 pub mod port;
 pub mod ports;
+pub mod root_url;
+pub mod root_urls;
 pub mod scheme;
 pub mod schemes;

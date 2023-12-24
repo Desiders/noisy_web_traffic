@@ -1,7 +1,10 @@
 use super::permission::Kind as PermissionKind;
 
 use glob::{Pattern, PatternError};
-use std::num::ParseIntError;
+use std::{
+    fmt::{self, Display, Formatter},
+    num::ParseIntError,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Kind {
@@ -36,6 +39,16 @@ impl Kind {
             Self::Glob(pattern) => pattern.matches(port.as_ref()),
             Self::Exact(exact) => exact.to_string() == port.as_ref(),
             Self::Any => true,
+        }
+    }
+}
+
+impl Display for Kind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Glob(pattern) => pattern.fmt(f),
+            Self::Exact(exact) => exact.fmt(f),
+            Self::Any => "*".fmt(f),
         }
     }
 }

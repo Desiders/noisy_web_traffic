@@ -1,5 +1,7 @@
 use super::permission::Kind as PermissionKind;
 
+use std::fmt::{self, Display, Formatter};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
     Http,
@@ -15,6 +17,16 @@ impl Kind {
             Kind::Http => scheme == "http",
             Kind::Https => scheme == "https",
             Kind::AnySupported => scheme == "http" || scheme == "https",
+        }
+    }
+}
+
+impl Display for Kind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Kind::Http => "http".fmt(f),
+            Kind::Https => "https".fmt(f),
+            Kind::AnySupported => "*".fmt(f),
         }
     }
 }

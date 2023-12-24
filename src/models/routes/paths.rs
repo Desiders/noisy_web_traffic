@@ -3,6 +3,8 @@ use super::{
     permission::Kind as PermissionKind,
 };
 
+use std::fmt::{self, Display, Formatter};
+
 #[derive(Debug, Default, Clone)]
 pub struct Paths {
     pub acceptable: Vec<Kind>,
@@ -52,6 +54,33 @@ impl Paths {
         let matched_none = self.unacceptable.iter().any(|kind| kind.matches(path));
 
         !matched_none
+    }
+}
+
+impl Display for Paths {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut acceptable = self
+            .acceptable
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+
+        acceptable.sort();
+
+        let mut unacceptable = self
+            .unacceptable
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+
+        unacceptable.sort();
+
+        write!(
+            f,
+            "Paths {{ acceptable: [{}], unacceptable: [{}] }}",
+            acceptable.join(", "),
+            unacceptable.join(", "),
+        )
     }
 }
 

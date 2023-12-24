@@ -1,5 +1,7 @@
 use super::permission::Kind as PermissionKind;
 
+use std::fmt::{self, Display, Formatter};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
     Get,
@@ -33,6 +35,21 @@ impl Kind {
                     || method == "head"
                     || method == "options"
             }
+        }
+    }
+}
+
+impl Display for Kind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Kind::Get => "GET".fmt(f),
+            Kind::Post => "POST".fmt(f),
+            Kind::Put => "PUT".fmt(f),
+            Kind::Patch => "PATCH".fmt(f),
+            Kind::Delete => "DELETE".fmt(f),
+            Kind::Head => "HEAD".fmt(f),
+            Kind::Options => "OPTIONS".fmt(f),
+            Kind::AnySupported => "ANY_SUPPORTED".fmt(f),
         }
     }
 }

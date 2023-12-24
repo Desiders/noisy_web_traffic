@@ -1,7 +1,9 @@
+use std::fmt::{self, Display, Formatter};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Redirections {
-    pub acceptable: bool,
-    pub max_redirects: u16,
+    acceptable: bool,
+    max_redirects: u16,
 }
 
 impl Redirections {
@@ -9,6 +11,28 @@ impl Redirections {
         Self {
             acceptable,
             max_redirects,
+        }
+    }
+
+    pub const fn acceptable(&self) -> bool {
+        self.acceptable
+    }
+
+    pub const fn max_redirects(&self) -> u16 {
+        if self.acceptable {
+            self.max_redirects
+        } else {
+            0
+        }
+    }
+}
+
+impl Display for Redirections {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        if self.acceptable {
+            write!(f, "acceptable redirections: {}", self.max_redirects)
+        } else {
+            write!(f, "unacceptable redirections")
         }
     }
 }

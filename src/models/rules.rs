@@ -1,5 +1,7 @@
 use super::{polling::Polling, route::Route};
 
+use std::fmt::{self, Display, Formatter};
+
 #[derive(Debug, Default, Clone)]
 pub struct Rules {
     pub route: Route,
@@ -13,6 +15,16 @@ impl Rules {
 
     pub fn builder() -> Builder {
         Builder::default()
+    }
+}
+
+impl Display for Rules {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Rules {{ route: {}, polling: {} }}",
+            self.route, self.polling
+        )
     }
 }
 

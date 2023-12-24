@@ -3,6 +3,8 @@ use super::{
     port::{Kind, Matcher},
 };
 
+use std::fmt::{self, Display, Formatter};
+
 #[derive(Debug, Default, Clone)]
 pub struct Ports {
     pub acceptable: Vec<Kind>,
@@ -64,6 +66,33 @@ impl Ports {
         let matched_none = self.unacceptable.iter().any(|kind| kind.matches_str(port));
 
         !matched_none
+    }
+}
+
+impl Display for Ports {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut acceptable = self
+            .acceptable
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+
+        acceptable.sort();
+
+        let mut unacceptable = self
+            .unacceptable
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+
+        unacceptable.sort();
+
+        write!(
+            f,
+            "Ports {{ acceptable: [{}], unacceptable: [{}] }}",
+            acceptable.join(", "),
+            unacceptable.join(", "),
+        )
     }
 }
 

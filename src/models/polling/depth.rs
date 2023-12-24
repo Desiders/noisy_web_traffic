@@ -1,7 +1,9 @@
+use std::fmt::{self, Display, Formatter};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Depth {
-    pub acceptable: bool,
-    pub max_depth: u16,
+    acceptable: bool,
+    max_depth: u16,
 }
 
 impl Depth {
@@ -12,11 +14,37 @@ impl Depth {
         }
     }
 
-    pub fn matches(&self, depth: u16) -> bool {
+    pub const fn new_unacceptable() -> Self {
+        Self::new(false, 0)
+    }
+
+    pub const fn new_acceptable(max_depth: u16) -> Self {
+        Self::new(true, max_depth)
+    }
+
+    pub const fn acceptable(&self) -> bool {
+        self.acceptable
+    }
+
+    pub const fn max_depth(&self) -> u16 {
         if self.acceptable {
-            depth < self.max_depth
+            self.max_depth
         } else {
-            false
+            0
+        }
+    }
+
+    pub const fn matches(&self, depth: u16) -> bool {
+        depth < self.max_depth()
+    }
+}
+
+impl Display for Depth {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        if self.acceptable {
+            write!(f, "acceptable depth: {}", self.max_depth)
+        } else {
+            write!(f, "unacceptable depth")
         }
     }
 }
