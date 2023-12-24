@@ -1,6 +1,6 @@
 use crate::{
     clients::reqwest::Reqwest,
-    models::rules::Rules,
+    models::route::Route,
     parser::{dom::get_dom_guard, urls::get_urls_from_dom},
     validation::route::validate_url,
 };
@@ -13,47 +13,47 @@ pub enum ErrorKind {
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
     #[error(transparent)]
-    ParsE(#[from] tl::ParseError),
+    Parse(#[from] tl::ParseError),
 }
 
-#[derive(Debug)]
-pub struct Crawler {
-    client: Reqwest,
-    rules: Rules,
+pub struct Crawler<'a, 'b> {
+    client: &'a Reqwest,
+    route: &'b Route,
 }
 
-impl Crawler {
-    pub const fn new(client: Reqwest, rules: Rules) -> Self {
-        Self { client, rules }
+impl<'a, 'b> Crawler<'a, 'b> {
+    pub const fn new(client: &'a Reqwest, route: &'b Route) -> Self {
+        Self { client, route }
     }
 
     pub async fn crawl(&self, url: &Url) -> Result<CrawlerInner, ErrorKind> {
         let raw_html = self.client.get(url).await?.text().await?;
         let dom_guard = get_dom_guard(raw_html)?;
 
-        Ok(CrawlerInner::new(dom_guard, &self.rules))
+        Ok(CrawlerInner::new(dom_guard, self.route))
     }
 }
 
 pub struct CrawlerInner<'a> {
     dom_guard: DomGuard,
-    rules: &'a Rules,
+    route: &'a Route,
 }
 
 impl<'a> CrawlerInner<'a> {
-    pub const fn new(dom_guard: DomGuard, rules: &'a Rules) -> Self {
-        Self { dom_guard, rules }
+    pub const fn new(dom_guard: DomGuard, route: &'a Route) -> Self {
+        Self { dom_guard, route }
     }
 
     pub fn get_page_urls(&self) -> Option<impl Iterator<Item = Url> + '_> {
         get_urls_from_dom(self.dom_guard.get_ref())
-            .map(|urls| urls.filter(|url| validate_url(url, &self.rules.route)))
+            .map(|urls| urls.filter(|url| validate_url(url, self.route)))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::rules::Rules;
 
     #[test]
     fn test_get_page_urls() {
@@ -77,7 +77,7 @@ mod tests {
 
         let rules = Rules::default();
 
-        let crawler = CrawlerInner::new(dom, &rules);
+        let crawler = CrawlerInner::new(dom, &rules.route);
 
         let urls = crawler.get_page_urls().unwrap().collect::<Vec<_>>();
 

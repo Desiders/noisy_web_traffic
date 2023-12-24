@@ -6,7 +6,7 @@ use crate::models::{
         method::{self, UnsupportedMethodError},
         path,
         permission::Kind as PermissionKind,
-        port,
+        port, root_url,
         scheme::{self, UnsupportedSchemeError},
     },
     rules::Rules,
@@ -29,6 +29,15 @@ pub enum ParseRouteErrorKind {
     #[error("Routes must be a table, found {0}")]
     RoutesMustBeTable(Value),
 
+    #[error("Root urls must be an array, found {0}")]
+    RootUrlsMustBeArray(Value),
+    #[error("Root url must be a table, found {0}")]
+    RootUrlMustBeTable(Value),
+    #[error("Root url value must be a string, found {0}")]
+    RootUrlValueMustBeString(Value),
+    #[error("Root url parse error: {0}")]
+    RootUrlParseError(url::ParseError),
+
     #[error("Hosts must be a table, found {0}")]
     HostsMustBeTable(Value),
     #[error("Hosts must be an array, found {0}")]
@@ -42,7 +51,7 @@ pub enum ParseRouteErrorKind {
     #[error("Host glob pattern error: {0}")]
     HostGlobPattern(PatternError),
     #[error("Host parse error: {0}")]
-    HostParseError(#[from] url::ParseError),
+    HostParseError(url::ParseError),
 
     #[error("Methods must be a table, found {0}")]
     MethodsMustBeTable(Value),
@@ -121,6 +130,46 @@ pub fn parse_route_from_toml(raw: &str) -> Result<Route, ParseRouteErrorKind> {
 
     let mut route_builder = Route::builder();
 
+    match routes.get("root_urls") {
+        Some(root_urls) => {
+            event!(Level::TRACE, "Parse root urls");
+
+            let Some(root_urls) = root_urls.as_array() else {
+                return Err(ParseRouteErrorKind::RootUrlsMustBeArray(root_urls.clone()));
+            };
+
+            for root_url in root_urls {
+                match root_url.as_table() {
+                    Some(root_url) => {
+                        if let Some(value) = root_url.get("value") {
+                            match value.as_str() {
+                                Some(root_url) => {
+                                    route_builder = route_builder.root_url(
+                                        root_url::RootUrl::new(root_url)
+                                            .map_err(ParseRouteErrorKind::RootUrlParseError)?,
+                                    );
+
+                                    continue;
+                                }
+                                None => {
+                                    return Err(ParseRouteErrorKind::RootUrlValueMustBeString(
+                                        value.clone(),
+                                    ))
+                                }
+                            }
+                        }
+
+                        event!(Level::TRACE, "Root url exact not found");
+                    }
+                    None => return Err(ParseRouteErrorKind::RootUrlMustBeTable(root_url.clone())),
+                }
+            }
+        }
+        None => {
+            event!(Level::TRACE, "Root urls not found");
+        }
+    }
+
     match routes.get("hosts") {
         Some(hosts) => {
             event!(Level::TRACE, "Parse hosts");
@@ -167,7 +216,8 @@ pub fn parse_route_from_toml(raw: &str) -> Result<Route, ParseRouteErrorKind> {
                                         Some(host) => {
                                             route_builder = route_builder.host(host::Matcher::new(
                                                 PermissionKind::Acceptable,
-                                                host::Kind::exact(host)?,
+                                                host::Kind::exact(host)
+                                                    .map_err(ParseRouteErrorKind::HostParseError)?,
                                             ));
 
                                             continue;
@@ -229,7 +279,8 @@ pub fn parse_route_from_toml(raw: &str) -> Result<Route, ParseRouteErrorKind> {
                                         Some(host) => {
                                             route_builder = route_builder.host(host::Matcher::new(
                                                 PermissionKind::Unacceptable,
-                                                host::Kind::exact(host)?,
+                                                host::Kind::exact(host)
+                                                    .map_err(ParseRouteErrorKind::HostParseError)?,
                                             ));
 
                                             continue;
@@ -844,6 +895,7 @@ pub enum ParsePollingErrorKind {
 /// - If the min sleep between requests is not between 0 and 18446744073709551615
 /// - If the max sleep between requests is not between 0 and 18446744073709551615
 /// - If the request timeout is not between 0 and 18446744073709551615
+#[instrument(skip_all)]
 pub fn parse_polling_from_toml(raw: &str) -> Result<Polling, ParsePollingErrorKind> {
     event!(Level::DEBUG, "Parse polling from toml");
 
@@ -1188,12 +1240,18 @@ mod tests {
     use super::*;
 
     use glob::Pattern;
-    use url::Host;
+    use url::{Host, Url};
 
     #[test]
     fn test_parse_route_from_toml() {
         let raw = r#"
             [routes]
+
+            [[routes.root_urls]]
+            value = "https://example.com"
+
+            [[routes.root_urls]]
+            value = "https://example2.com"
 
             [[routes.hosts.acceptable]]
 
@@ -1250,6 +1308,16 @@ mod tests {
         "#;
 
         let route = parse_route_from_toml(raw).unwrap();
+
+        assert_eq!(route.root_urls.len(), 2);
+        assert_eq!(
+            **(*route.root_urls).first().unwrap(),
+            Url::parse("https://example.com").unwrap(),
+        );
+        assert_eq!(
+            **(*route.root_urls).last().unwrap(),
+            Url::parse("https://example2.com").unwrap(),
+        );
 
         assert_eq!(route.hosts.acceptable.len(), 2);
         assert_eq!(
@@ -1334,11 +1402,11 @@ mod tests {
 
         let polling = parse_polling_from_toml(raw).unwrap();
 
-        assert_eq!(polling.redirections.acceptable, true);
-        assert_eq!(polling.redirections.max_redirects, 10);
+        assert_eq!(polling.redirections.acceptable(), true);
+        assert_eq!(polling.redirections.max_redirects(), 10);
 
-        assert_eq!(polling.depth.acceptable, true);
-        assert_eq!(polling.depth.max_depth, 10);
+        assert_eq!(polling.depth.acceptable(), true);
+        assert_eq!(polling.depth.max_depth(), 10);
 
         assert_eq!(polling.time.min_sleep_between_requests, 1000);
         assert_eq!(polling.time.max_sleep_between_requests, 10000);

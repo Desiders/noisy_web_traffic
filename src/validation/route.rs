@@ -3,15 +3,15 @@ use crate::models::route::Route;
 use tracing::{event, instrument, Level};
 use url::Url;
 
-#[instrument]
+#[instrument(skip_all, fields(%url))]
 pub fn validate_url(url: &Url, route: &Route) -> bool {
     let Some(host) = url.host_str() else {
-        event!(Level::DEBUG, "No host found");
+        event!(Level::TRACE, "No host found");
 
         return false;
     };
     let Some(port) = url.port_or_known_default() else {
-        event!(Level::DEBUG, "No port found");
+        event!(Level::TRACE, "No port found");
 
         return false;
     };
@@ -22,7 +22,7 @@ pub fn validate_url(url: &Url, route: &Route) -> bool {
     let path_matches = route.path_matches(url.path());
 
     event!(
-        Level::DEBUG,
+        Level::TRACE,
         scheme = scheme_matches,
         host = host_matches,
         port = port_matches,
