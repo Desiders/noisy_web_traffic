@@ -12,6 +12,7 @@ pub struct Hosts {
 }
 
 impl Hosts {
+    #[allow(dead_code)]
     pub fn new(hosts: impl IntoIterator<Item = Matcher>) -> Self {
         let mut acceptable = vec![];
         let mut unacceptable = vec![];

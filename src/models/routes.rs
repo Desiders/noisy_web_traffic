@@ -1,7 +1,5 @@
 pub mod host;
 pub mod hosts;
-pub mod method;
-pub mod methods;
 pub mod path;
 pub mod paths;
 pub mod permission;

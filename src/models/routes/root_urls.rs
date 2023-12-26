@@ -10,10 +10,6 @@ use std::{
 pub struct RootUrls(pub Vec<RootUrl>);
 
 impl RootUrls {
-    pub fn new(root_urls: impl IntoIterator<Item = RootUrl>) -> Self {
-        Self(root_urls.into_iter().collect())
-    }
-
     pub fn get_random(&self) -> Option<&RootUrl> {
         let mut rng = thread_rng();
 
@@ -45,6 +41,12 @@ impl Deref for RootUrls {
     type Target = Vec<RootUrl>;
 
     fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl AsRef<[RootUrl]> for RootUrls {
+    fn as_ref(&self) -> &[RootUrl] {
         &self.0
     }
 }

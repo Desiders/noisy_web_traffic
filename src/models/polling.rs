@@ -83,11 +83,6 @@ impl Builder {
         self
     }
 
-    pub fn proxies(mut self, proxies: impl IntoIterator<Item = proxy::Proxy>) -> Self {
-        self.proxies.extend(proxies);
-        self
-    }
-
     pub fn proxy(mut self, proxy: proxy::Proxy) -> Self {
         self.proxies.extend(iter::once(proxy));
         self
@@ -100,14 +95,6 @@ impl Builder {
 
     pub fn time(mut self, time: time::Time) -> Self {
         self.time = time;
-        self
-    }
-
-    pub fn user_agents(
-        mut self,
-        user_agents: impl IntoIterator<Item = user_agent::UserAgent>,
-    ) -> Self {
-        self.user_agents.extend(user_agents);
         self
     }
 

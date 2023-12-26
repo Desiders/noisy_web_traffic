@@ -1,6 +1,6 @@
 use crate::models::routes::{
-    host, hosts::Hosts, method, methods::Methods, path, paths::Paths, port, ports::Ports, root_url,
-    root_urls::RootUrls, scheme, schemes::Schemes,
+    host, hosts::Hosts, path, paths::Paths, port, ports::Ports, root_url, root_urls::RootUrls,
+    scheme, schemes::Schemes,
 };
 
 use std::{
@@ -12,7 +12,6 @@ use std::{
 pub struct Route {
     pub root_urls: RootUrls,
     pub hosts: Hosts,
-    pub methods: Methods,
     pub paths: Paths,
     pub ports: Ports,
     pub schemes: Schemes,
@@ -22,17 +21,12 @@ impl Route {
     pub fn new(
         root_urls: RootUrls,
         mut hosts: Hosts,
-        mut methods: Methods,
         mut paths: Paths,
         mut ports: Ports,
         mut schemes: Schemes,
     ) -> Self {
         if hosts.acceptable.is_empty() {
             hosts.acceptable.push(host::Kind::Any);
-        }
-
-        if methods.acceptable.is_empty() {
-            methods.acceptable.push(method::Kind::AnySupported);
         }
 
         if paths.acceptable.is_empty() {
@@ -50,7 +44,6 @@ impl Route {
         Self {
             root_urls,
             hosts,
-            methods,
             paths,
             ports,
             schemes,
@@ -61,20 +54,12 @@ impl Route {
         self.hosts.matches(host)
     }
 
-    pub fn method_matches(&self, method: impl AsRef<str>) -> bool {
-        self.methods.matches(method)
-    }
-
     pub fn path_matches(&self, path: impl AsRef<str>) -> bool {
         self.paths.matches(path)
     }
 
     pub fn port_matches(&self, port: u16) -> bool {
         self.ports.matches(port)
-    }
-
-    pub fn port_matches_str(&self, port: impl AsRef<str>) -> bool {
-        self.ports.matches_str(port)
     }
 
     pub fn scheme_matches(&self, scheme: impl AsRef<str>) -> bool {
@@ -90,8 +75,8 @@ impl Display for Route {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Route {{ root_urls: {}, hosts: {}, methods: {}, paths: {}, ports: {}, schemes: {} }}",
-            self.root_urls, self.hosts, self.methods, self.paths, self.ports, self.schemes,
+            "Route {{ root_urls: {}, hosts: {}, paths: {}, ports: {}, schemes: {} }}",
+            self.root_urls, self.hosts, self.paths, self.ports, self.schemes,
         )
     }
 }
@@ -101,7 +86,6 @@ impl Default for Route {
         Self::new(
             RootUrls::default(),
             Hosts::default(),
-            Methods::default(),
             Paths::default(),
             Ports::default(),
             Schemes::default(),
@@ -113,25 +97,14 @@ impl Default for Route {
 pub struct Builder {
     root_urls: RootUrls,
     hosts: Hosts,
-    methods: Methods,
     paths: Paths,
     ports: Ports,
     schemes: Schemes,
 }
 
 impl Builder {
-    pub fn root_urls(mut self, root_urls: impl IntoIterator<Item = root_url::RootUrl>) -> Self {
-        self.root_urls.extend(root_urls);
-        self
-    }
-
     pub fn root_url(mut self, root_url: root_url::RootUrl) -> Self {
         self.root_urls.extend(iter::once(root_url));
-        self
-    }
-
-    pub fn hosts(mut self, hosts: impl IntoIterator<Item = host::Matcher>) -> Self {
-        self.hosts.extend(hosts);
         self
     }
 
@@ -140,38 +113,13 @@ impl Builder {
         self
     }
 
-    pub fn methods(mut self, methods: impl IntoIterator<Item = method::Matcher>) -> Self {
-        self.methods.extend(methods);
-        self
-    }
-
-    pub fn method(mut self, method: method::Matcher) -> Self {
-        self.methods.extend(iter::once(method));
-        self
-    }
-
-    pub fn paths(mut self, paths: impl IntoIterator<Item = path::Matcher>) -> Self {
-        self.paths.extend(paths);
-        self
-    }
-
     pub fn path(mut self, path: path::Matcher) -> Self {
         self.paths.extend(iter::once(path));
         self
     }
 
-    pub fn ports(mut self, ports: impl IntoIterator<Item = port::Matcher>) -> Self {
-        self.ports.extend(ports);
-        self
-    }
-
     pub fn port(mut self, port: port::Matcher) -> Self {
         self.ports.extend(iter::once(port));
-        self
-    }
-
-    pub fn schemes(mut self, schemes: impl IntoIterator<Item = scheme::Matcher>) -> Self {
-        self.schemes.extend(schemes);
         self
     }
 
@@ -184,7 +132,6 @@ impl Builder {
         Route::new(
             self.root_urls,
             self.hosts,
-            self.methods,
             self.paths,
             self.ports,
             self.schemes,
@@ -205,10 +152,6 @@ mod tests {
             .host(host::Matcher::new(
                 PermissionKind::Acceptable,
                 host::Kind::exact("example.com").unwrap(),
-            ))
-            .method(method::Matcher::new(
-                PermissionKind::Acceptable,
-                method::Kind::Get,
             ))
             .path(path::Matcher::new(
                 PermissionKind::Acceptable,
@@ -236,9 +179,6 @@ mod tests {
             host::Kind::exact("example.com").unwrap()
         );
 
-        assert_eq!(route.methods.acceptable.len(), 1);
-        assert_eq!(route.methods.acceptable[0], method::Kind::Get);
-
         assert_eq!(route.paths.acceptable.len(), 1);
         assert_eq!(route.paths.acceptable[0], path::Kind::exact("/"));
 
@@ -252,9 +192,6 @@ mod tests {
 
         assert_eq!(route.hosts.acceptable.len(), 1);
         assert_eq!(route.hosts.acceptable[0], host::Kind::Any);
-
-        assert_eq!(route.methods.acceptable.len(), 1);
-        assert_eq!(route.methods.acceptable[0], method::Kind::AnySupported);
 
         assert_eq!(route.paths.acceptable.len(), 1);
         assert_eq!(route.paths.acceptable[0], path::Kind::Any);
@@ -274,30 +211,6 @@ mod tests {
                 PermissionKind::Unacceptable,
                 host::Kind::exact("example2.org").unwrap(),
             ))
-            .build();
-
-        assert_eq!(route.hosts.acceptable.len(), 1);
-        assert_eq!(route.hosts.unacceptable.len(), 1);
-        assert_eq!(
-            route.hosts.acceptable[0],
-            host::Kind::exact("example.com").unwrap()
-        );
-        assert_eq!(
-            route.hosts.unacceptable[0],
-            host::Kind::exact("example2.org").unwrap()
-        );
-
-        let route = Route::builder()
-            .hosts([
-                host::Matcher::new(
-                    PermissionKind::Acceptable,
-                    host::Kind::exact("example.com").unwrap(),
-                ),
-                host::Matcher::new(
-                    PermissionKind::Unacceptable,
-                    host::Kind::exact("example2.org").unwrap(),
-                ),
-            ])
             .build();
 
         assert_eq!(route.hosts.acceptable.len(), 1);

@@ -12,6 +12,7 @@ pub struct Schemes {
 }
 
 impl Schemes {
+    #[allow(dead_code)]
     pub fn new(schemes: impl IntoIterator<Item = Matcher>) -> Self {
         let mut acceptable = vec![];
         let mut unacceptable = vec![];

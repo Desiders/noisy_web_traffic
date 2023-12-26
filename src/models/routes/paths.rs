@@ -12,6 +12,7 @@ pub struct Paths {
 }
 
 impl Paths {
+    #[allow(dead_code)]
     pub fn new(paths: impl IntoIterator<Item = Matcher>) -> Self {
         let mut acceptable = vec![];
         let mut unacceptable = vec![];

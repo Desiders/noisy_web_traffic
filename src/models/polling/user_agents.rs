@@ -10,10 +10,6 @@ use std::{
 pub struct UserAgents(pub Vec<UserAgent>);
 
 impl UserAgents {
-    pub fn new(user_agents: impl IntoIterator<Item = UserAgent>) -> Self {
-        Self(user_agents.into_iter().collect())
-    }
-
     pub fn get_random(&self) -> Option<&UserAgent> {
         let mut rng = thread_rng();
 

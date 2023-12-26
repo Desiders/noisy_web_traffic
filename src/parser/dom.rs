@@ -1,14 +1,10 @@
 use tl::{HTMLTag as Tag, Node, ParseError, ParserOptions, VDom as Dom, VDomGuard as DomGuard};
 
-pub fn get_dom_with_options(raw: &str, options: ParserOptions) -> Result<Dom<'_>, ParseError> {
-    let dom = tl::parse(raw, options)?;
+#[allow(clippy::module_name_repetitions, dead_code)]
+pub fn get_dom(raw: &str) -> Result<Dom<'_>, ParseError> {
+    let dom = tl::parse(raw, ParserOptions::default())?;
 
     Ok(dom)
-}
-
-#[allow(clippy::module_name_repetitions)]
-pub fn get_dom(raw: &str) -> Result<Dom<'_>, ParseError> {
-    get_dom_with_options(raw, ParserOptions::default())
 }
 
 /// # Safety

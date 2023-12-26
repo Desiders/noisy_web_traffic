@@ -14,6 +14,7 @@ impl Redirections {
         }
     }
 
+    #[allow(dead_code)]
     pub const fn acceptable(&self) -> bool {
         self.acceptable
     }

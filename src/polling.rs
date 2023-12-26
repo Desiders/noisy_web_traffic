@@ -1,7 +1,7 @@
 use crate::{
     clients::reqwest::Reqwest,
     crawlers::urls::{Crawler, ErrorKind as CrawlErrorKind},
-    models::{polling::Polling as PollingRules, route::Route},
+    models::{polling::Polling as PollingRules, route::Route, routes::root_urls::RootUrls},
 };
 
 use async_recursion::async_recursion;
@@ -41,11 +41,11 @@ impl Polling {
         }
     }
 
-    fn get_root_urls(&self) -> impl Iterator<Item = &Url> + '_ {
-        self.route.root_urls.as_slice().iter().map(AsRef::as_ref)
+    fn get_root_urls(&self) -> &RootUrls {
+        &self.route.root_urls
     }
 
-    fn get_crawler(&self) -> Crawler {
+    const fn get_crawler(&self) -> Crawler {
         Crawler::new(&self.client, &self.route)
     }
 
@@ -145,7 +145,7 @@ impl Polling {
 
     #[instrument(skip_all)]
     pub async fn run(&self) -> Result<(), ErrorKind> {
-        let root_urls = self.get_root_urls().collect::<Vec<_>>().into_boxed_slice();
+        let root_urls = self.get_root_urls();
 
         if root_urls.is_empty() {
             return Err(ErrorKind::RootUrlsEmpty);
@@ -153,19 +153,13 @@ impl Polling {
 
         event!(
             Level::INFO,
-            "Start polling with {} root URLs: {}",
+            "Start polling with {} root URLs: {root_urls}",
             root_urls.len(),
-            root_urls
-                .iter()
-                .map(AsRef::as_ref)
-                .collect::<Vec<_>>()
-                .join(", "),
         );
 
-        let mut rng = thread_rng();
-
         loop {
-            let root_url = root_urls.choose(&mut rng).unwrap();
+            // `unwrap` is safe here because we checked that `root_urls` is not empty
+            let root_url = root_urls.get_random().expect("Root URLs is empty");
 
             event!(Level::INFO, %root_url, "Start crawling with root URL");
 

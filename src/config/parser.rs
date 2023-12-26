@@ -2,9 +2,7 @@ use crate::models::{
     polling::{depth, proxy, redirections, time, user_agent, Polling},
     route::Route,
     routes::{
-        host,
-        method::{self, UnsupportedMethodError},
-        path,
+        host, path,
         permission::Kind as PermissionKind,
         port, root_url,
         scheme::{self, UnsupportedSchemeError},
@@ -52,17 +50,6 @@ pub enum ParseRouteErrorKind {
     HostGlobPattern(PatternError),
     #[error("Host parse error: {0}")]
     HostParseError(url::ParseError),
-
-    #[error("Methods must be a table, found {0}")]
-    MethodsMustBeTable(Value),
-    #[error("Methods must be an array, found {0}")]
-    MethodsMustBeArray(Value),
-    #[error("Method must be a table, found {0}")]
-    MethodMustBeTable(Value),
-    #[error("Method value must be a string, found {0}")]
-    MethodExactMustBeString(Value),
-    #[error(transparent)]
-    UnsupportedMethod(#[from] UnsupportedMethodError),
 
     #[error("Schemes must be a table, found {0}")]
     SchemesMustBeTable(Value),
@@ -306,111 +293,6 @@ pub fn parse_route_from_toml(raw: &str) -> Result<Route, ParseRouteErrorKind> {
         }
         None => {
             event!(Level::TRACE, "Hosts not found");
-        }
-    }
-
-    match routes.get("methods") {
-        Some(methods) => {
-            event!(Level::TRACE, "Parse methods");
-
-            let Some(methods) = methods.as_table() else {
-                return Err(ParseRouteErrorKind::MethodsMustBeTable(methods.clone()));
-            };
-
-            match methods.get("acceptable") {
-                Some(acceptable) => {
-                    event!(Level::TRACE, "Parse acceptable methods");
-
-                    let Some(acceptable) = acceptable.as_array() else {
-                        return Err(ParseRouteErrorKind::MethodsMustBeArray(acceptable.clone()));
-                    };
-
-                    for method in acceptable {
-                        match method.as_table() {
-                            Some(method) => {
-                                if let Some(exact) = method.get("exact") {
-                                    match exact.as_str() {
-                                        Some(method) => {
-                                            route_builder =
-                                                route_builder.method(method::Matcher::new(
-                                                    PermissionKind::Acceptable,
-                                                    method::Kind::try_from(method.to_owned())?,
-                                                ));
-
-                                            continue;
-                                        }
-                                        None => {
-                                            return Err(
-                                                ParseRouteErrorKind::MethodExactMustBeString(
-                                                    exact.clone(),
-                                                ),
-                                            )
-                                        }
-                                    }
-                                }
-
-                                event!(Level::TRACE, "Method exact not found");
-                            }
-                            None => {
-                                return Err(ParseRouteErrorKind::MethodMustBeTable(method.clone()))
-                            }
-                        }
-                    }
-                }
-                None => {
-                    event!(Level::TRACE, "Acceptable methods not found");
-                }
-            }
-
-            match methods.get("unacceptable") {
-                Some(unacceptable) => {
-                    event!(Level::TRACE, "Parse unacceptable methods");
-
-                    let Some(unacceptable) = unacceptable.as_array() else {
-                        return Err(ParseRouteErrorKind::MethodsMustBeArray(
-                            unacceptable.clone(),
-                        ));
-                    };
-
-                    for method in unacceptable {
-                        match method.as_table() {
-                            Some(method) => {
-                                if let Some(exact) = method.get("exact") {
-                                    match exact.as_str() {
-                                        Some(method) => {
-                                            route_builder =
-                                                route_builder.method(method::Matcher::new(
-                                                    PermissionKind::Unacceptable,
-                                                    method::Kind::try_from(method.to_owned())?,
-                                                ));
-
-                                            continue;
-                                        }
-                                        None => {
-                                            return Err(
-                                                ParseRouteErrorKind::MethodExactMustBeString(
-                                                    exact.clone(),
-                                                ),
-                                            )
-                                        }
-                                    }
-                                }
-
-                                event!(Level::TRACE, "Method exact not found");
-                            }
-                            None => {
-                                return Err(ParseRouteErrorKind::MethodMustBeTable(method.clone()))
-                            }
-                        }
-                    }
-                }
-                None => {
-                    event!(Level::TRACE, "Unacceptable methods not found");
-                }
-            }
-        }
-        None => {
-            event!(Level::TRACE, "Methods not found");
         }
     }
 
@@ -1296,15 +1178,6 @@ mod tests {
             glob = "/admin/*"
 
             [[routes.paths.unacceptable]]
-
-            [[routes.methods.acceptable]]
-            exact = "GET"
-
-            [[routes.methods.acceptable]]
-            exact = "PATCH"
-
-            [[routes.methods.unacceptable]]
-            exact = "POST"
         "#;
 
         let route = parse_route_from_toml(raw).unwrap();
@@ -1363,12 +1236,6 @@ mod tests {
             route.paths.unacceptable[0],
             path::Kind::Glob(Pattern::new("/admin/*").unwrap())
         );
-
-        assert_eq!(route.methods.acceptable.len(), 2);
-        assert_eq!(route.methods.acceptable[0], method::Kind::Get);
-        assert_eq!(route.methods.acceptable[1], method::Kind::Patch);
-        assert_eq!(route.methods.unacceptable.len(), 1);
-        assert_eq!(route.methods.unacceptable[0], method::Kind::Post);
     }
 
     #[test]

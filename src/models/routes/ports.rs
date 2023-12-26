@@ -12,6 +12,7 @@ pub struct Ports {
 }
 
 impl Ports {
+    #[allow(dead_code)]
     pub fn new(ports: impl IntoIterator<Item = Matcher>) -> Self {
         let mut acceptable = vec![];
         let mut unacceptable = vec![];

@@ -5,6 +5,7 @@ use crate::models::polling::{
 use rand::{seq::SliceRandom as _, thread_rng};
 use reqwest::{self, redirect::Policy, Body, Client, ClientBuilder, Proxy, Response};
 use std::time::Duration;
+use tracing::instrument;
 
 pub struct Reqwest {
     proxies: Vec<Proxy>,
@@ -73,12 +74,14 @@ impl Reqwest {
         client_builder.build()
     }
 
+    #[instrument(skip_all, fields(url = %url.as_ref()))]
     pub async fn get(&self, url: impl AsRef<str>) -> Result<Response, reqwest::Error> {
         let response = self.get_client()?.get(url.as_ref()).send().await?;
 
         Ok(response)
     }
 
+    #[instrument(skip_all, fields(url = %url.as_ref()))]
     pub async fn post(
         &self,
         url: impl AsRef<str>,
@@ -94,6 +97,7 @@ impl Reqwest {
         Ok(response)
     }
 
+    #[instrument(skip_all, fields(url = %url.as_ref()))]
     pub async fn put(
         &self,
         url: impl AsRef<str>,
@@ -109,12 +113,14 @@ impl Reqwest {
         Ok(response)
     }
 
+    #[instrument(skip_all, fields(url = %url.as_ref()))]
     pub async fn delete(&self, url: impl AsRef<str>) -> Result<Response, reqwest::Error> {
         let response = self.get_client()?.delete(url.as_ref()).send().await?;
 
         Ok(response)
     }
 
+    #[instrument(skip_all, fields(url = %url.as_ref()))]
     pub async fn patch(
         &self,
         url: impl AsRef<str>,
@@ -130,12 +136,14 @@ impl Reqwest {
         Ok(response)
     }
 
+    #[instrument(skip_all, fields(url = %url.as_ref()))]
     pub async fn head(&self, url: impl AsRef<str>) -> Result<Response, reqwest::Error> {
         let response = self.get_client()?.head(url.as_ref()).send().await?;
 
         Ok(response)
     }
 
+    #[instrument(skip_all, fields(url = %url.as_ref()))]
     pub async fn options(&self, url: impl AsRef<str>) -> Result<Response, reqwest::Error> {
         let response = self
             .get_client()?

@@ -34,6 +34,7 @@ impl Kind {
         }
     }
 
+    #[allow(dead_code)]
     pub fn matches_str(&self, port: impl AsRef<str>) -> bool {
         match self {
             Self::Glob(pattern) => pattern.matches(port.as_ref()),

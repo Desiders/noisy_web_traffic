@@ -14,14 +14,7 @@ impl Depth {
         }
     }
 
-    pub const fn new_unacceptable() -> Self {
-        Self::new(false, 0)
-    }
-
-    pub const fn new_acceptable(max_depth: u16) -> Self {
-        Self::new(true, max_depth)
-    }
-
+    #[allow(dead_code)]
     pub const fn acceptable(&self) -> bool {
         self.acceptable
     }
