@@ -8,10 +8,9 @@
 # - Paths: The path of the request must match one of the acceptable paths and none of the unacceptable paths.
 # - Methods: The method of the request must match one of the acceptable methods and none of the unacceptable methods.
 #
-# For use exact rules, the value must be a valid exact pattern and specified as a string in the `exact` field.
 # For use globbing rules, the value must be a valid globbing pattern and specified as a string in the `glob` field.
 # Be aware, that the `glob` field is supported only for some rules. See the list of supported rules below and its descriptions.
-# If specified both `exact` and `glob` fields, the `exact` field takes precedence.
+# If specified both `exact` and `glob` fields, the `glob` field takes precedence.
 #
 # The following globbing rules are supported:
 # - `?` matches any single character.
