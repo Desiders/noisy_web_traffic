@@ -30,6 +30,47 @@
 
 [routes]
 
+# Root URLs from which starts routing.
+# If root URLs are not specified, the program will exit with an error.
+[[routes.root_urls]]
+value = "https://www.youtube.com/"
+
+[[routes.root_urls]]
+value = "https://www.google.com/"
+
+[[routes.root_urls]]
+value = "https://www.facebook.com/"
+
+[[routes.root_urls]]
+value = "https://www.twitter.com/"
+
+[[routes.root_urls]]
+value = "https://www.instagram.com/"
+
+[[routes.root_urls]]
+value = "https://www.pinterest.com/"
+
+[[routes.root_urls]]
+value = "https://www.tumblr.com/"
+
+[[routes.root_urls]]
+value = "https://www.reddit.com/"
+
+[[routes.root_urls]]
+value = "https://www.pornhub.com/"
+
+[[routes.root_urls]]
+value = "https://www.xvideos.com/"
+
+[[routes.root_urls]]
+value = "https://www.amazon.com/"
+
+[[routes.root_urls]]
+value = "https://www.ebay.com/"
+
+[[routes.root_urls]]
+value = "https://www.aliexpress.com/"
+
 # Hosts that are acceptable for this route. **Supports globbing**.
 # If no hosts are specified, all hosts are acceptable.
 # If hosts are specified in both acceptable and unacceptable lists, the unacceptable list takes precedence.
@@ -87,22 +128,3 @@ glob = "/api/*"
 
 [[routes.paths.unacceptable]]
 glob = "/admin/*"
-
-# Methods that are acceptable for this route.
-# Supported values: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS
-# If no methods are specified, all supported methods are acceptable.
-# If methods are specified in both acceptable and unacceptable lists, the unacceptable list takes precedence.
-[[routes.methods.acceptable]]
-exact = "GET"
-
-[[routes.methods.acceptable]]
-exact = "HEAD"
-
-[[routes.methods.acceptable]]
-exact = "OPTIONS"
-
-# Methods that are unacceptable for this route.
-# Supported values: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS
-# If no methods are specified, all methods from the acceptable list are acceptable.
-# If methods are specified in both acceptable and unacceptable lists, the unacceptable list takes precedence.
-[[routes.methods.unacceptable]]

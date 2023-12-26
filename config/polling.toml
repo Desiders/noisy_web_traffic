@@ -14,7 +14,7 @@ max_redirects = 5
 # Min depth value is 0. Max depth value is 65535.
 [polling.depth]
 acceptable = true
-max_depth = 7
+max_depth = 12
 
 # Polling time configuration
 # All times are measured in milliseconds. Min time value is 0. Max time value is 18446744073709551615.
