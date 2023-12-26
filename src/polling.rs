@@ -10,6 +10,8 @@ use std::time::Duration;
 use tracing::{event, instrument, Level};
 use url::Url;
 
+const MAX_PAGE_URLS: usize = 100;
+
 #[derive(Debug, thiserror::Error)]
 pub enum ErrorKind {
     #[error("Root URLs is empty")]
@@ -17,7 +19,7 @@ pub enum ErrorKind {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum CrawlWithRootUrlErrorKind {
+pub enum CrawlWithParentUrlErrorKind {
     #[error(transparent)]
     Crawl(#[from] CrawlErrorKind),
     #[error("Depth limit reached")]
@@ -57,42 +59,63 @@ impl Polling {
         self.polling.time.get_random_sleep_between_requests()
     }
 
+    /// Recursively crawl URLs.
+    /// # Arguments
+    /// * `url` - URL to crawl
+    /// * `depth` - Current depth
+    /// # Returns
+    /// * `Ok(())` - If crawling was successful
+    /// * `Err(CrawlWithRootUrlErrorKind)` - If crawling was unsuccessful
     #[instrument(skip_all, fields(%url, %depth))]
     #[async_recursion]
     async fn run_with_parent_url(
         &self,
         url: &Url,
         depth: u16,
-    ) -> Result<(), CrawlWithRootUrlErrorKind> {
-        event!(Level::INFO, "Start crawling");
-
+    ) -> Result<(), CrawlWithParentUrlErrorKind> {
         if depth > 0 {
             if !self.depth_matches(depth) {
-                return Err(CrawlWithRootUrlErrorKind::DepthLimitReached);
+                return Err(CrawlWithParentUrlErrorKind::DepthLimitReached);
             }
-
-            let sleep_duration = self.get_random_sleep_between_requests();
-
-            event!(
-                Level::INFO,
-                "Sleeping for {:.2} ms",
-                sleep_duration.as_millis(),
-            );
-
-            tokio::time::sleep(sleep_duration).await;
         }
 
-        let mut urls = match self.get_crawler().crawl(url).await?.get_page_urls() {
-            Some(urls) => urls.collect::<Vec<_>>().into_boxed_slice(),
+        event!(Level::INFO, "Start crawling");
+
+        let sleep_duration = self.get_random_sleep_between_requests();
+
+        event!(
+            Level::INFO,
+            "Sleeping for {:.2} ms",
+            sleep_duration.as_millis(),
+        );
+
+        tokio::time::sleep(sleep_duration).await;
+
+        let mut urls = Vec::with_capacity(100);
+
+        match self.get_crawler().crawl(url).await?.get_page_urls() {
+            Some(page_urls) => {
+                let mut current_iter = 0;
+
+                for page_url in page_urls.into_iter() {
+                    if current_iter >= MAX_PAGE_URLS {
+                        break;
+                    }
+
+                    current_iter += 1;
+
+                    urls.push(page_url);
+                }
+            }
             None => {
-                return Err(CrawlWithRootUrlErrorKind::NoUrlsFound);
+                return Err(CrawlWithParentUrlErrorKind::NoUrlsFound);
             }
         };
 
         let urls_len = urls.len();
 
         if urls_len > 1 {
-            event!(Level::INFO, "Found {} URLs", urls_len);
+            event!(Level::DEBUG, "Found {} URLs", urls_len);
 
             event!(
                 Level::TRACE,
@@ -103,40 +126,41 @@ impl Polling {
                     .join(", ")
             );
         } else {
-            event!(Level::INFO, "URLs not found");
+            // We already log it in `run` method
+            if depth != 0 {
+                event!(Level::INFO, "URLs not found");
+            }
 
-            return Err(CrawlWithRootUrlErrorKind::NoUrlsFound);
+            return Err(CrawlWithParentUrlErrorKind::NoUrlsFound);
         }
 
         urls.shuffle(&mut thread_rng());
 
-        for url in &*urls {
-            match self.run_with_parent_url(url, depth + 1).await {
-                Ok(()) => {
-                    // We don't want logging recursively similar logs that differ from the last one only by the depth
-                    event!(
-                        Level::TRACE,
-                        child_url = %url,
-                        "Crawling finished for child URL",
-                    );
+        for url in urls.into_iter() {
+            let Err(err) = self.run_with_parent_url(&url, depth + 1).await else {
+                // We don't want to crawl all site URLs over and over again.
+                // So we stop crawling child URLs if we reached the depth limit at least once.
+                break;
+            };
 
-                    // We don't wabt to crawl all site URLs over and over again.
-                    // So we stop crawling child URLs if we reached the depth limit at least once.
+            match err {
+                CrawlWithParentUrlErrorKind::Crawl(err) => {
+                    event!(
+                        Level::ERROR, %err, child_url = %url,
+                        "Error while crawling child URL",
+                    );
+                }
+                CrawlWithParentUrlErrorKind::DepthLimitReached => {
+                    event!(Level::INFO, "Depth limit reached for child URL");
+
                     break;
                 }
-                Err(err) => match err {
-                    CrawlWithRootUrlErrorKind::Crawl(err) => {
-                        event!(Level::ERROR, %err, child_url = %url, "Error while crawling child URL");
-                    }
-                    CrawlWithRootUrlErrorKind::DepthLimitReached => {
-                        event!(Level::WARN, child_url = %url, "Depth limit reached for child URL. Stop crawling child URLs and continue with next root URL");
-
-                        break;
-                    }
-                    CrawlWithRootUrlErrorKind::NoUrlsFound => {
-                        event!(Level::WARN, child_url = %url, "No URLs found for child URL");
-                    }
-                },
+                CrawlWithParentUrlErrorKind::NoUrlsFound => {
+                    event!(
+                        Level::WARN, child_url = %url,
+                        "No URLs found for child URL",
+                    );
+                }
             }
         }
 
@@ -161,26 +185,27 @@ impl Polling {
             // `unwrap` is safe here because we checked that `root_urls` is not empty
             let root_url = root_urls.get_random().expect("Root URLs is empty");
 
-            event!(Level::INFO, %root_url, "Start crawling with root URL");
+            let Err(err) = self.run_with_parent_url(root_url, 0).await else {
+                continue;
+            };
 
-            match self.run_with_parent_url(root_url, 0).await {
-                Ok(()) => {
-                    event!(Level::INFO, "Crawling finished");
+            match err {
+                CrawlWithParentUrlErrorKind::Crawl(err) => {
+                    event!(Level::ERROR, %err, %root_url, "Error while crawling root URL");
                 }
-                Err(err) => match err {
-                    CrawlWithRootUrlErrorKind::Crawl(err) => {
-                        event!(Level::ERROR, %err, "Error while crawling root URL");
-                    }
-                    CrawlWithRootUrlErrorKind::DepthLimitReached => {
-                        unreachable!("Depth limit reached for root URL, but it should never happen. Please, report this bug to the developers")
-                    }
-                    CrawlWithRootUrlErrorKind::NoUrlsFound => {
-                        event!(
-                            Level::WARN,
-                            "No URLs found for root URL. Maybe you need to change the root URL or the crawler rules",
-                        );
-                    }
-                },
+                CrawlWithParentUrlErrorKind::DepthLimitReached => {
+                    unreachable!(
+                        "Depth limit reached for root URL, but it should never happen. \
+                        Please, report this bug to the developers"
+                    )
+                }
+                CrawlWithParentUrlErrorKind::NoUrlsFound => {
+                    event!(
+                        Level::WARN,
+                        "No URLs found for root URL. \
+                        Maybe you need to change the root URL or the crawler rules",
+                    );
+                }
             }
         }
     }
