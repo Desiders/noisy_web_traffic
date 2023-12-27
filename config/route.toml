@@ -70,6 +70,13 @@ value = "https://www.ebay.com/"
 [[routes.root_urls]]
 value = "https://www.aliexpress.com/"
 
+# Follow robots exclusion protocol by checking `robots.txt` file.
+# If specified, the program will check `robots.txt` file for each root URL and check the rules for each child URL of the root URL.
+# If file `robots.txt ` not found, then the check is considered successful.
+# If no follow robots exclusion protocol are specified, the program will check `robots.txt` file by default.
+[routes.follow_robots_exclusion_protocol]
+value = true
+
 # Hosts that are acceptable for this route. **Supports globbing**.
 # If no hosts are specified, all hosts are acceptable.
 # If hosts are specified in both acceptable and unacceptable lists, the unacceptable list takes precedence.

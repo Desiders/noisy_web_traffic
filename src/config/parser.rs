@@ -2,7 +2,7 @@ use crate::models::{
     polling::{depth, proxy, redirections, time, user_agent, Polling},
     route::Route,
     routes::{
-        host, path,
+        follow_robots_exclusion_protocol, host, path,
         permission::Kind as PermissionKind,
         port, root_url,
         scheme::{self, UnsupportedSchemeError},
@@ -31,6 +31,9 @@ pub enum ParseRouteErrorKind {
     RootUrlValueMustBeString(Value),
     #[error("Root url parse error: {0}")]
     RootUrlParseError(url::ParseError),
+
+    #[error("Follow robots exclusion protocol must be a bool, found {0}")]
+    FollowRobotsExclusionProtocolMustBeBool(Value),
 
     #[error("Hosts must be an array, found {0}")]
     HostsMustBeArray(Value),
@@ -122,6 +125,32 @@ pub fn parse_route_from_toml(raw: &str) -> Result<Route, ParseRouteErrorKind> {
         }
         None => {
             event!(Level::TRACE, "Root urls not found");
+        }
+    }
+
+    match routes.get("follow_robots_exclusion_protocol") {
+        Some(follow_robots_exclusion_protocol) => {
+            event!(Level::TRACE, "Parse follow robots exclusion protocol");
+
+            if let Some(value) = follow_robots_exclusion_protocol.get("value") {
+                if let Some(value) = value.as_bool() {
+                    route_builder = route_builder.follow_robots_exclusion_protocol(
+                        follow_robots_exclusion_protocol::FollowRobotsExclusionProtocol::new(value),
+                    );
+                } else {
+                    return Err(
+                        ParseRouteErrorKind::FollowRobotsExclusionProtocolMustBeBool(value.clone()),
+                    );
+                }
+            } else {
+                event!(
+                    Level::TRACE,
+                    "Follow robots exclusion protocol value not found"
+                );
+            }
+        }
+        None => {
+            event!(Level::TRACE, "Follow robots exclusion protocol not found");
         }
     }
 
@@ -858,8 +887,8 @@ pub fn parse_polling_from_toml(raw: &str) -> Result<Polling, ParsePollingErrorKi
 
             if let Some(value) = user_agent.get("value") {
                 if let Some(value) = value.as_str() {
-                    polling_builder = polling_builder
-                        .user_agent(user_agent::UserAgent::new(value.to_owned()));
+                    polling_builder =
+                        polling_builder.user_agent(user_agent::UserAgent::new(value.to_owned()));
                 } else {
                     return Err(ParsePollingErrorKind::UserAgentValueMustBeString(
                         value.clone(),
@@ -880,8 +909,7 @@ pub fn parse_polling_from_toml(raw: &str) -> Result<Polling, ParsePollingErrorKi
 
             if let Some(value) = proxy.get("value") {
                 if let Some(value) = value.as_str() {
-                    polling_builder =
-                        polling_builder.proxy(proxy::Proxy::new(value.to_owned()));
+                    polling_builder = polling_builder.proxy(proxy::Proxy::new(value.to_owned()));
                 } else {
                     return Err(ParsePollingErrorKind::ProxyValueMustBeString(value.clone()));
                 }
@@ -962,6 +990,9 @@ mod tests {
             [[routes.root_urls]]
             value = "https://example2.com"
 
+            [routes.follow_robots_exclusion_protocol]
+            value = false
+
             [[routes.hosts.acceptable]]
 
             [[routes.hosts.acceptable]]
@@ -1017,6 +1048,11 @@ mod tests {
         assert_eq!(
             **(*route.root_urls).last().unwrap(),
             Url::parse("https://example2.com").unwrap(),
+        );
+
+        assert_eq!(
+            route.follow_robots_exclusion_protocol,
+            follow_robots_exclusion_protocol::FollowRobotsExclusionProtocol::new(false)
         );
 
         assert_eq!(route.hosts.acceptable.len(), 2);

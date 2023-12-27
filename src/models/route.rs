@@ -1,6 +1,6 @@
 use crate::models::routes::{
-    host, hosts::Hosts, path, paths::Paths, port, ports::Ports, root_url, root_urls::RootUrls,
-    scheme, schemes::Schemes,
+    follow_robots_exclusion_protocol::FollowRobotsExclusionProtocol, host, hosts::Hosts, path,
+    paths::Paths, port, ports::Ports, root_url, root_urls::RootUrls, scheme, schemes::Schemes,
 };
 
 use std::{
@@ -8,9 +8,12 @@ use std::{
     iter,
 };
 
+use super::routes::follow_robots_exclusion_protocol;
+
 #[derive(Debug, Clone)]
 pub struct Route {
     pub root_urls: RootUrls,
+    pub follow_robots_exclusion_protocol: FollowRobotsExclusionProtocol,
     pub hosts: Hosts,
     pub paths: Paths,
     pub ports: Ports,
@@ -20,6 +23,7 @@ pub struct Route {
 impl Route {
     pub fn new(
         root_urls: RootUrls,
+        follow_robots_exclusion_protocol: FollowRobotsExclusionProtocol,
         mut hosts: Hosts,
         mut paths: Paths,
         mut ports: Ports,
@@ -43,6 +47,7 @@ impl Route {
 
         Self {
             root_urls,
+            follow_robots_exclusion_protocol,
             hosts,
             paths,
             ports,
@@ -85,6 +90,7 @@ impl Default for Route {
     fn default() -> Self {
         Self::new(
             RootUrls::default(),
+            follow_robots_exclusion_protocol::FollowRobotsExclusionProtocol::default(),
             Hosts::default(),
             Paths::default(),
             Ports::default(),
@@ -96,6 +102,7 @@ impl Default for Route {
 #[derive(Debug, Default, Clone)]
 pub struct Builder {
     root_urls: RootUrls,
+    follow_robots_exclusion_protocol: FollowRobotsExclusionProtocol,
     hosts: Hosts,
     paths: Paths,
     ports: Ports,
@@ -105,6 +112,14 @@ pub struct Builder {
 impl Builder {
     pub fn root_url(mut self, root_url: root_url::RootUrl) -> Self {
         self.root_urls.extend(iter::once(root_url));
+        self
+    }
+
+    pub fn follow_robots_exclusion_protocol(
+        mut self,
+        follow_robots_exclusion_protocol: follow_robots_exclusion_protocol::FollowRobotsExclusionProtocol,
+    ) -> Self {
+        self.follow_robots_exclusion_protocol = follow_robots_exclusion_protocol;
         self
     }
 
@@ -131,6 +146,7 @@ impl Builder {
     pub fn build(self) -> Route {
         Route::new(
             self.root_urls,
+            self.follow_robots_exclusion_protocol,
             self.hosts,
             self.paths,
             self.ports,
@@ -149,6 +165,9 @@ mod tests {
     fn test_route_builder() {
         let route = Route::builder()
             .root_url(root_url::RootUrl::new("https://example.com").unwrap())
+            .follow_robots_exclusion_protocol(
+                follow_robots_exclusion_protocol::FollowRobotsExclusionProtocol::new(false),
+            )
             .host(host::Matcher::new(
                 PermissionKind::Acceptable,
                 host::Kind::exact("example.com").unwrap(),
@@ -171,6 +190,11 @@ mod tests {
         assert_eq!(
             route.root_urls[0],
             root_url::RootUrl::new("https://example.com").unwrap()
+        );
+
+        assert_eq!(
+            route.follow_robots_exclusion_protocol,
+            follow_robots_exclusion_protocol::FollowRobotsExclusionProtocol::new(false)
         );
 
         assert_eq!(route.hosts.acceptable.len(), 1);
