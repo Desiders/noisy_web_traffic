@@ -1,39 +1,34 @@
 pub mod depth;
-pub mod proxies;
 pub mod proxy;
 pub mod redirections;
 pub mod time;
 pub mod user_agent;
-pub mod user_agents;
 
-use std::{
-    fmt::{self, Display, Formatter},
-    iter,
-};
+use std::fmt::{self, Display, Formatter};
 
 #[derive(Debug, Clone)]
 pub struct Polling {
     pub depth: depth::Depth,
-    pub proxies: proxies::Proxies,
+    pub proxy: Option<proxy::Proxy>,
     pub redirections: redirections::Redirections,
     pub time: time::Time,
-    pub user_agents: user_agents::UserAgents,
+    pub user_agent: Option<user_agent::UserAgent>,
 }
 
 impl Polling {
     pub fn new(
         depth: depth::Depth,
-        proxies: proxies::Proxies,
+        proxy: Option<proxy::Proxy>,
         redirections: redirections::Redirections,
         time: time::Time,
-        user_agents: user_agents::UserAgents,
+        user_agent: Option<user_agent::UserAgent>,
     ) -> Self {
         Self {
             depth,
-            proxies,
+            proxy,
             redirections,
             time,
-            user_agents,
+            user_agent,
         }
     }
 
@@ -50,8 +45,15 @@ impl Display for Polling {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Polling {{ depth: {}, proxies: {}, redirections: {}, time: {}, user_agents: {} }}",
-            self.depth, self.proxies, self.redirections, self.time, self.user_agents
+            "Polling {{ depth: {}, proxy: {}, redirections: {}, time: {}, user_agent: {} }}",
+            self.depth,
+            self.proxy.as_ref().map(|p| p.as_ref()).unwrap_or("None"),
+            self.redirections,
+            self.time,
+            self.user_agent
+                .as_ref()
+                .map(|ua| ua.as_ref())
+                .unwrap_or("None")
         )
     }
 }
@@ -60,10 +62,10 @@ impl Default for Polling {
     fn default() -> Self {
         Self::new(
             depth::Depth::default(),
-            proxies::Proxies::default(),
+            None,
             redirections::Redirections::default(),
             time::Time::default(),
-            user_agents::UserAgents::default(),
+            None,
         )
     }
 }
@@ -71,10 +73,10 @@ impl Default for Polling {
 #[derive(Debug, Default, Clone)]
 pub struct Builder {
     depth: depth::Depth,
-    proxies: proxies::Proxies,
+    proxy: Option<proxy::Proxy>,
     redirections: redirections::Redirections,
     time: time::Time,
-    user_agents: user_agents::UserAgents,
+    user_agent: Option<user_agent::UserAgent>,
 }
 
 impl Builder {
@@ -83,8 +85,8 @@ impl Builder {
         self
     }
 
-    pub fn proxy(mut self, proxy: proxy::Proxy) -> Self {
-        self.proxies.extend(iter::once(proxy));
+    pub fn proxy(mut self, proxy: Option<proxy::Proxy>) -> Self {
+        self.proxy = proxy;
         self
     }
 
@@ -98,18 +100,18 @@ impl Builder {
         self
     }
 
-    pub fn user_agent(mut self, user_agent: user_agent::UserAgent) -> Self {
-        self.user_agents.extend(iter::once(user_agent));
+    pub fn user_agent(mut self, user_agent: Option<user_agent::UserAgent>) -> Self {
+        self.user_agent = user_agent;
         self
     }
 
     pub fn build(self) -> Polling {
         Polling::new(
             self.depth,
-            self.proxies,
+            self.proxy,
             self.redirections,
             self.time,
-            self.user_agents,
+            self.user_agent,
         )
     }
 }

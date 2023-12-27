@@ -29,19 +29,11 @@ request_timeout = 7000
 
 # Polling user agent configuration
 # User agent is the string that is sent to the server to identify the client.
-# User agent is randomly selected from the list of user agents.
-# If the list is empty, the default user agent will be used.
-[[polling.user_agents]]
+# If the user agent is empty, the user agent will be randomly generated.
+[polling.user_agent]
 value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3679.0 Safari/537.36"
-
-[[polling.user_agents]]
-value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:64.0) Gecko/20100101 Firefox/64.0"
-
-[[polling.user_agents]]
-value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:63.0) Gecko/20100101 Firefox/63.0"
 
 # Polling proxy configuration
 # Proxy is the server that is used to connect to the Internet.
-# Proxy is randomly selected from the list of proxies.
-# If the list is empty, the polling will be performed without a proxy.
-[[polling.proxies]]
+# If the proxy is empty, the proxy will not be used.
+[polling.proxy]

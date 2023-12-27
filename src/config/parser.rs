@@ -12,7 +12,7 @@ use crate::models::{
 
 use glob::PatternError;
 use std::{fs, io, num::ParseIntError, path::Path};
-use toml::{map::Map, Value};
+use toml::Value;
 use tracing::{event, field, instrument, Level, Span};
 
 #[derive(Debug, thiserror::Error)]
@@ -20,28 +20,20 @@ pub enum ParseRouteErrorKind {
     #[error("Parse toml error: {0}")]
     ParseToml(#[from] toml::de::Error),
 
-    #[error("Config must be a table, found {0}")]
-    ConfigMustBeTable(Value),
-    #[error("Routes not found in table: {0}")]
-    RoutesNotFound(Map<String, Value>),
+    #[error("Routes not found: {0}")]
+    RoutesNotFound(Value),
     #[error("Routes must be a table, found {0}")]
     RoutesMustBeTable(Value),
 
     #[error("Root urls must be an array, found {0}")]
     RootUrlsMustBeArray(Value),
-    #[error("Root url must be a table, found {0}")]
-    RootUrlMustBeTable(Value),
     #[error("Root url value must be a string, found {0}")]
     RootUrlValueMustBeString(Value),
     #[error("Root url parse error: {0}")]
     RootUrlParseError(url::ParseError),
 
-    #[error("Hosts must be a table, found {0}")]
-    HostsMustBeTable(Value),
     #[error("Hosts must be an array, found {0}")]
     HostsMustBeArray(Value),
-    #[error("Host must be a table, found {0}")]
-    HostMustBeTable(Value),
     #[error("Host value must be a string, found {0}")]
     HostExactMustBeString(Value),
     #[error("Host glob must be a string, found {0}")]
@@ -51,19 +43,13 @@ pub enum ParseRouteErrorKind {
     #[error("Host parse error: {0}")]
     HostParseError(url::ParseError),
 
-    #[error("Schemes must be a table, found {0}")]
-    SchemesMustBeTable(Value),
     #[error("Schemes must be an array, found {0}")]
     SchemesMustBeArray(Value),
-    #[error("Scheme must be a table, found {0}")]
-    SchemeMustBeTable(Value),
     #[error("Scheme value must be a string, found {0}")]
     SchemeExactMustBeString(Value),
     #[error(transparent)]
     UnsupportedScheme(#[from] UnsupportedSchemeError),
 
-    #[error("Ports must be a table, found {0}")]
-    PortsMustBeTable(Value),
     #[error("Ports must be an array, found {0}")]
     PortsMustBeArray(Value),
     #[error("Port glob must be a string, found {0}")]
@@ -72,21 +58,15 @@ pub enum ParseRouteErrorKind {
     PortGlobPattern(PatternError),
     #[error("Port value parse error: {0}")]
     PortExactParseError(ParseIntError),
-    #[error("Port must be a table, found {0}")]
-    PortMustBeTable(Value),
     #[error("Port value must be an int or a string that represents an int, found {0}")]
     PortExactMustBeStringOrInt(Value),
 
-    #[error("Paths must be a table, found {0}")]
-    PathsMustBeTable(Value),
     #[error("Paths must be an array, found {0}")]
     PathsMustBeArray(Value),
     #[error("Path glob pattern error: {0}")]
     PathGlobPattern(PatternError),
     #[error("Path glob must be a string, found {0}")]
     PathGlobMustBeString(Value),
-    #[error("Path must be a table, found {0}")]
-    PathMustBeTable(Value),
     #[error("Path value must be a string, found {0}")]
     PathExactMustBeString(Value),
 }
@@ -103,16 +83,13 @@ pub fn parse_route_from_toml(raw: &str) -> Result<Route, ParseRouteErrorKind> {
     event!(Level::DEBUG, "Parse route from toml");
 
     let value = raw.parse::<Value>()?;
-    let Some(table) = value.as_table() else {
-        return Err(ParseRouteErrorKind::ConfigMustBeTable(value));
-    };
 
-    let routes = match table.get("routes") {
+    let routes = match value.get("routes") {
         Some(routes) => match routes.as_table() {
             Some(routes) => routes,
             None => return Err(ParseRouteErrorKind::RoutesMustBeTable(routes.clone())),
         },
-        None => return Err(ParseRouteErrorKind::RoutesNotFound(table.clone())),
+        None => return Err(ParseRouteErrorKind::RoutesNotFound(value.clone())),
     };
 
     let mut route_builder = Route::builder();
@@ -126,29 +103,20 @@ pub fn parse_route_from_toml(raw: &str) -> Result<Route, ParseRouteErrorKind> {
             };
 
             for root_url in root_urls {
-                match root_url.as_table() {
-                    Some(root_url) => {
-                        if let Some(value) = root_url.get("value") {
-                            match value.as_str() {
-                                Some(root_url) => {
-                                    route_builder = route_builder.root_url(
-                                        root_url::RootUrl::new(root_url)
-                                            .map_err(ParseRouteErrorKind::RootUrlParseError)?,
-                                    );
-
-                                    continue;
-                                }
-                                None => {
-                                    return Err(ParseRouteErrorKind::RootUrlValueMustBeString(
-                                        value.clone(),
-                                    ))
-                                }
-                            }
+                if let Some(value) = root_url.get("value") {
+                    match value.as_str() {
+                        Some(root_url) => {
+                            route_builder = route_builder.root_url(
+                                root_url::RootUrl::new(root_url)
+                                    .map_err(ParseRouteErrorKind::RootUrlParseError)?,
+                            );
                         }
-
-                        event!(Level::TRACE, "Root url exact not found");
+                        None => {
+                            return Err(ParseRouteErrorKind::RootUrlValueMustBeString(
+                                value.clone(),
+                            ))
+                        }
                     }
-                    None => return Err(ParseRouteErrorKind::RootUrlMustBeTable(root_url.clone())),
                 }
             }
         }
@@ -161,10 +129,6 @@ pub fn parse_route_from_toml(raw: &str) -> Result<Route, ParseRouteErrorKind> {
         Some(hosts) => {
             event!(Level::TRACE, "Parse hosts");
 
-            let Some(hosts) = hosts.as_table() else {
-                return Err(ParseRouteErrorKind::HostsMustBeTable(hosts.clone()));
-            };
-
             match hosts.get("acceptable") {
                 Some(acceptable) => {
                     event!(Level::TRACE, "Parse acceptable hosts");
@@ -174,53 +138,47 @@ pub fn parse_route_from_toml(raw: &str) -> Result<Route, ParseRouteErrorKind> {
                     };
 
                     for host in acceptable {
-                        match host.as_table() {
-                            Some(host) => {
-                                if let Some(glob) = host.get("glob") {
-                                    match glob.as_str() {
-                                        Some(host) => {
-                                            route_builder = route_builder.host(host::Matcher::new(
-                                                PermissionKind::Acceptable,
-                                                host::Kind::glob(host).map_err(
-                                                    ParseRouteErrorKind::HostGlobPattern,
-                                                )?,
-                                            ));
+                        if let Some(glob) = host.get("glob") {
+                            match glob.as_str() {
+                                Some(host) => {
+                                    route_builder = route_builder.host(host::Matcher::new(
+                                        PermissionKind::Acceptable,
+                                        host::Kind::glob(host)
+                                            .map_err(ParseRouteErrorKind::HostGlobPattern)?,
+                                    ));
 
-                                            continue;
-                                        }
-                                        None => {
-                                            return Err(ParseRouteErrorKind::HostGlobMustBeString(
-                                                glob.clone(),
-                                            ))
-                                        }
-                                    }
+                                    continue;
                                 }
-
-                                event!(Level::TRACE, "Host glob not found");
-
-                                if let Some(exact) = host.get("exact") {
-                                    match exact.as_str() {
-                                        Some(host) => {
-                                            route_builder = route_builder.host(host::Matcher::new(
-                                                PermissionKind::Acceptable,
-                                                host::Kind::exact(host)
-                                                    .map_err(ParseRouteErrorKind::HostParseError)?,
-                                            ));
-
-                                            continue;
-                                        }
-                                        None => {
-                                            return Err(ParseRouteErrorKind::HostExactMustBeString(
-                                                exact.clone(),
-                                            ))
-                                        }
-                                    }
+                                None => {
+                                    return Err(ParseRouteErrorKind::HostGlobMustBeString(
+                                        glob.clone(),
+                                    ))
                                 }
-
-                                event!(Level::TRACE, "Host exact not found");
                             }
-                            None => return Err(ParseRouteErrorKind::HostMustBeTable(host.clone())),
                         }
+
+                        event!(Level::TRACE, "Host glob not found");
+
+                        if let Some(exact) = host.get("exact") {
+                            match exact.as_str() {
+                                Some(host) => {
+                                    route_builder = route_builder.host(host::Matcher::new(
+                                        PermissionKind::Acceptable,
+                                        host::Kind::exact(host)
+                                            .map_err(ParseRouteErrorKind::HostParseError)?,
+                                    ));
+
+                                    continue;
+                                }
+                                None => {
+                                    return Err(ParseRouteErrorKind::HostExactMustBeString(
+                                        exact.clone(),
+                                    ))
+                                }
+                            }
+                        }
+
+                        event!(Level::TRACE, "Host exact not found");
                     }
                 }
                 None => {
@@ -237,53 +195,47 @@ pub fn parse_route_from_toml(raw: &str) -> Result<Route, ParseRouteErrorKind> {
                     };
 
                     for host in unacceptable {
-                        match host.as_table() {
-                            Some(host) => {
-                                if let Some(glob) = host.get("glob") {
-                                    match glob.as_str() {
-                                        Some(host) => {
-                                            route_builder = route_builder.host(host::Matcher::new(
-                                                PermissionKind::Unacceptable,
-                                                host::Kind::glob(host).map_err(
-                                                    ParseRouteErrorKind::HostGlobPattern,
-                                                )?,
-                                            ));
+                        if let Some(glob) = host.get("glob") {
+                            match glob.as_str() {
+                                Some(host) => {
+                                    route_builder = route_builder.host(host::Matcher::new(
+                                        PermissionKind::Unacceptable,
+                                        host::Kind::glob(host)
+                                            .map_err(ParseRouteErrorKind::HostGlobPattern)?,
+                                    ));
 
-                                            continue;
-                                        }
-                                        None => {
-                                            return Err(ParseRouteErrorKind::HostGlobMustBeString(
-                                                glob.clone(),
-                                            ))
-                                        }
-                                    }
+                                    continue;
                                 }
-
-                                event!(Level::TRACE, "Host glob not found");
-
-                                if let Some(exact) = host.get("exact") {
-                                    match exact.as_str() {
-                                        Some(host) => {
-                                            route_builder = route_builder.host(host::Matcher::new(
-                                                PermissionKind::Unacceptable,
-                                                host::Kind::exact(host)
-                                                    .map_err(ParseRouteErrorKind::HostParseError)?,
-                                            ));
-
-                                            continue;
-                                        }
-                                        None => {
-                                            return Err(ParseRouteErrorKind::HostExactMustBeString(
-                                                exact.clone(),
-                                            ))
-                                        }
-                                    }
+                                None => {
+                                    return Err(ParseRouteErrorKind::HostGlobMustBeString(
+                                        glob.clone(),
+                                    ))
                                 }
-
-                                event!(Level::TRACE, "Host exact not found");
                             }
-                            None => return Err(ParseRouteErrorKind::HostMustBeTable(host.clone())),
                         }
+
+                        event!(Level::TRACE, "Host glob not found");
+
+                        if let Some(exact) = host.get("exact") {
+                            match exact.as_str() {
+                                Some(host) => {
+                                    route_builder = route_builder.host(host::Matcher::new(
+                                        PermissionKind::Unacceptable,
+                                        host::Kind::exact(host)
+                                            .map_err(ParseRouteErrorKind::HostParseError)?,
+                                    ));
+
+                                    continue;
+                                }
+                                None => {
+                                    return Err(ParseRouteErrorKind::HostExactMustBeString(
+                                        exact.clone(),
+                                    ))
+                                }
+                            }
+                        }
+
+                        event!(Level::TRACE, "Host exact not found");
                     }
                 }
                 None => {
@@ -300,10 +252,6 @@ pub fn parse_route_from_toml(raw: &str) -> Result<Route, ParseRouteErrorKind> {
         Some(schemes) => {
             event!(Level::TRACE, "Parse schemes");
 
-            let Some(schemes) = schemes.as_table() else {
-                return Err(ParseRouteErrorKind::SchemesMustBeTable(schemes.clone()));
-            };
-
             match schemes.get("acceptable") {
                 Some(acceptable) => {
                     event!(Level::TRACE, "Parse acceptable schemes");
@@ -313,35 +261,25 @@ pub fn parse_route_from_toml(raw: &str) -> Result<Route, ParseRouteErrorKind> {
                     };
 
                     for scheme in acceptable {
-                        match scheme.as_table() {
-                            Some(scheme) => {
-                                if let Some(exact) = scheme.get("exact") {
-                                    match exact.as_str() {
-                                        Some(scheme) => {
-                                            route_builder =
-                                                route_builder.scheme(scheme::Matcher::new(
-                                                    PermissionKind::Acceptable,
-                                                    scheme::Kind::try_from(scheme.to_owned())?,
-                                                ));
+                        if let Some(exact) = scheme.get("exact") {
+                            match exact.as_str() {
+                                Some(scheme) => {
+                                    route_builder = route_builder.scheme(scheme::Matcher::new(
+                                        PermissionKind::Acceptable,
+                                        scheme::Kind::try_from(scheme.to_owned())?,
+                                    ));
 
-                                            continue;
-                                        }
-                                        None => {
-                                            return Err(
-                                                ParseRouteErrorKind::SchemeExactMustBeString(
-                                                    exact.clone(),
-                                                ),
-                                            )
-                                        }
-                                    }
+                                    continue;
                                 }
-
-                                event!(Level::TRACE, "Scheme exact not found");
-                            }
-                            None => {
-                                return Err(ParseRouteErrorKind::SchemeMustBeTable(scheme.clone()))
+                                None => {
+                                    return Err(ParseRouteErrorKind::SchemeExactMustBeString(
+                                        exact.clone(),
+                                    ))
+                                }
                             }
                         }
+
+                        event!(Level::TRACE, "Scheme exact not found");
                     }
                 }
                 None => {
@@ -360,35 +298,25 @@ pub fn parse_route_from_toml(raw: &str) -> Result<Route, ParseRouteErrorKind> {
                     };
 
                     for scheme in unacceptable {
-                        match scheme.as_table() {
-                            Some(scheme) => {
-                                if let Some(exact) = scheme.get("exact") {
-                                    match exact.as_str() {
-                                        Some(scheme) => {
-                                            route_builder =
-                                                route_builder.scheme(scheme::Matcher::new(
-                                                    PermissionKind::Unacceptable,
-                                                    scheme::Kind::try_from(scheme.to_owned())?,
-                                                ));
+                        if let Some(exact) = scheme.get("exact") {
+                            match exact.as_str() {
+                                Some(scheme) => {
+                                    route_builder = route_builder.scheme(scheme::Matcher::new(
+                                        PermissionKind::Unacceptable,
+                                        scheme::Kind::try_from(scheme.to_owned())?,
+                                    ));
 
-                                            continue;
-                                        }
-                                        None => {
-                                            return Err(
-                                                ParseRouteErrorKind::SchemeExactMustBeString(
-                                                    exact.clone(),
-                                                ),
-                                            )
-                                        }
-                                    }
+                                    continue;
                                 }
-
-                                event!(Level::TRACE, "Scheme exact not found");
-                            }
-                            None => {
-                                return Err(ParseRouteErrorKind::SchemeMustBeTable(scheme.clone()))
+                                None => {
+                                    return Err(ParseRouteErrorKind::SchemeExactMustBeString(
+                                        exact.clone(),
+                                    ))
+                                }
                             }
                         }
+
+                        event!(Level::TRACE, "Scheme exact not found");
                     }
                 }
                 None => {
@@ -405,10 +333,6 @@ pub fn parse_route_from_toml(raw: &str) -> Result<Route, ParseRouteErrorKind> {
         Some(ports) => {
             event!(Level::TRACE, "Parse ports");
 
-            let Some(ports) = ports.as_table() else {
-                return Err(ParseRouteErrorKind::PortsMustBeTable(ports.clone()));
-            };
-
             match ports.get("acceptable") {
                 Some(acceptable) => {
                     event!(Level::TRACE, "Parse acceptable ports");
@@ -418,63 +342,56 @@ pub fn parse_route_from_toml(raw: &str) -> Result<Route, ParseRouteErrorKind> {
                     };
 
                     for port in acceptable {
-                        match port.as_table() {
-                            Some(port) => {
-                                if let Some(glob) = port.get("glob") {
-                                    match glob.as_str() {
-                                        Some(port) => {
-                                            route_builder = route_builder.port(port::Matcher::new(
-                                                PermissionKind::Acceptable,
-                                                port::Kind::glob(port).map_err(
-                                                    ParseRouteErrorKind::PortGlobPattern,
-                                                )?,
-                                            ));
-
-                                            continue;
-                                        }
-                                        None => {
-                                            return Err(ParseRouteErrorKind::PortGlobMustBeString(
-                                                glob.clone(),
-                                            ))
-                                        }
-                                    }
-                                }
-
-                                event!(Level::TRACE, "Port glob not found");
-
-                                if let Some(exact) = port.get("exact") {
-                                    if let Some(port) = exact.as_str() {
-                                        route_builder = route_builder.port(port::Matcher::new(
-                                            PermissionKind::Acceptable,
-                                            port::Kind::exact_str(port).map_err(
-                                                ParseRouteErrorKind::PortExactParseError,
-                                            )?,
-                                        ));
-
-                                        continue;
-                                    }
-
-                                    if let Some(port) = exact.as_integer() {
-                                        route_builder =
-                                            route_builder.port(port::Matcher::new(
-                                                PermissionKind::Acceptable,
-                                                port::Kind::exact(u16::try_from(port).expect(
-                                                    "Port number must be between 0 and 65535",
-                                                )),
-                                            ));
-
-                                        continue;
-                                    }
-
-                                    return Err(ParseRouteErrorKind::PortExactMustBeStringOrInt(
-                                        exact.clone(),
+                        if let Some(glob) = port.get("glob") {
+                            match glob.as_str() {
+                                Some(port) => {
+                                    route_builder = route_builder.port(port::Matcher::new(
+                                        PermissionKind::Acceptable,
+                                        port::Kind::glob(port)
+                                            .map_err(ParseRouteErrorKind::PortGlobPattern)?,
                                     ));
-                                }
 
-                                event!(Level::TRACE, "Port exact not found");
+                                    continue;
+                                }
+                                None => {
+                                    return Err(ParseRouteErrorKind::PortGlobMustBeString(
+                                        glob.clone(),
+                                    ))
+                                }
                             }
-                            None => return Err(ParseRouteErrorKind::PortMustBeTable(port.clone())),
                         }
+
+                        event!(Level::TRACE, "Port glob not found");
+
+                        if let Some(exact) = port.get("exact") {
+                            if let Some(port) = exact.as_str() {
+                                route_builder = route_builder.port(port::Matcher::new(
+                                    PermissionKind::Acceptable,
+                                    port::Kind::exact_str(port)
+                                        .map_err(ParseRouteErrorKind::PortExactParseError)?,
+                                ));
+
+                                continue;
+                            }
+
+                            if let Some(port) = exact.as_integer() {
+                                route_builder = route_builder.port(port::Matcher::new(
+                                    PermissionKind::Acceptable,
+                                    port::Kind::exact(
+                                        u16::try_from(port)
+                                            .expect("Port number must be between 0 and 65535"),
+                                    ),
+                                ));
+
+                                continue;
+                            }
+
+                            return Err(ParseRouteErrorKind::PortExactMustBeStringOrInt(
+                                exact.clone(),
+                            ));
+                        }
+
+                        event!(Level::TRACE, "Port exact not found");
                     }
                 }
                 None => {
@@ -491,63 +408,56 @@ pub fn parse_route_from_toml(raw: &str) -> Result<Route, ParseRouteErrorKind> {
                     };
 
                     for port in unacceptable {
-                        match port.as_table() {
-                            Some(port) => {
-                                if let Some(glob) = port.get("glob") {
-                                    match glob.as_str() {
-                                        Some(port) => {
-                                            route_builder = route_builder.port(port::Matcher::new(
-                                                PermissionKind::Unacceptable,
-                                                port::Kind::glob(port).map_err(
-                                                    ParseRouteErrorKind::PortGlobPattern,
-                                                )?,
-                                            ));
-
-                                            continue;
-                                        }
-                                        None => {
-                                            return Err(ParseRouteErrorKind::PortGlobMustBeString(
-                                                glob.clone(),
-                                            ))
-                                        }
-                                    }
-                                }
-
-                                event!(Level::TRACE, "Port glob not found");
-
-                                if let Some(exact) = port.get("exact") {
-                                    if let Some(port) = exact.as_str() {
-                                        route_builder = route_builder.port(port::Matcher::new(
-                                            PermissionKind::Unacceptable,
-                                            port::Kind::exact_str(port).map_err(
-                                                ParseRouteErrorKind::PortExactParseError,
-                                            )?,
-                                        ));
-
-                                        continue;
-                                    }
-
-                                    if let Some(port) = exact.as_integer() {
-                                        route_builder =
-                                            route_builder.port(port::Matcher::new(
-                                                PermissionKind::Unacceptable,
-                                                port::Kind::exact(u16::try_from(port).expect(
-                                                    "Port number must be between 0 and 65535",
-                                                )),
-                                            ));
-
-                                        continue;
-                                    }
-
-                                    return Err(ParseRouteErrorKind::PortExactMustBeStringOrInt(
-                                        exact.clone(),
+                        if let Some(glob) = port.get("glob") {
+                            match glob.as_str() {
+                                Some(port) => {
+                                    route_builder = route_builder.port(port::Matcher::new(
+                                        PermissionKind::Unacceptable,
+                                        port::Kind::glob(port)
+                                            .map_err(ParseRouteErrorKind::PortGlobPattern)?,
                                     ));
-                                }
 
-                                event!(Level::TRACE, "Port exact not found");
+                                    continue;
+                                }
+                                None => {
+                                    return Err(ParseRouteErrorKind::PortGlobMustBeString(
+                                        glob.clone(),
+                                    ))
+                                }
                             }
-                            None => return Err(ParseRouteErrorKind::PortMustBeTable(port.clone())),
                         }
+
+                        event!(Level::TRACE, "Port glob not found");
+
+                        if let Some(exact) = port.get("exact") {
+                            if let Some(port) = exact.as_str() {
+                                route_builder = route_builder.port(port::Matcher::new(
+                                    PermissionKind::Unacceptable,
+                                    port::Kind::exact_str(port)
+                                        .map_err(ParseRouteErrorKind::PortExactParseError)?,
+                                ));
+
+                                continue;
+                            }
+
+                            if let Some(port) = exact.as_integer() {
+                                route_builder = route_builder.port(port::Matcher::new(
+                                    PermissionKind::Unacceptable,
+                                    port::Kind::exact(
+                                        u16::try_from(port)
+                                            .expect("Port number must be between 0 and 65535"),
+                                    ),
+                                ));
+
+                                continue;
+                            }
+
+                            return Err(ParseRouteErrorKind::PortExactMustBeStringOrInt(
+                                exact.clone(),
+                            ));
+                        }
+
+                        event!(Level::TRACE, "Port exact not found");
                     }
                 }
                 None => {
@@ -564,10 +474,6 @@ pub fn parse_route_from_toml(raw: &str) -> Result<Route, ParseRouteErrorKind> {
         Some(paths) => {
             event!(Level::TRACE, "Parse paths");
 
-            let Some(paths) = paths.as_table() else {
-                return Err(ParseRouteErrorKind::PathsMustBeTable(paths.clone()));
-            };
-
             match paths.get("acceptable") {
                 Some(acceptable) => {
                     event!(Level::TRACE, "Parse acceptable paths");
@@ -577,52 +483,46 @@ pub fn parse_route_from_toml(raw: &str) -> Result<Route, ParseRouteErrorKind> {
                     };
 
                     for path in acceptable {
-                        match path.as_table() {
-                            Some(path) => {
-                                if let Some(glob) = path.get("glob") {
-                                    match glob.as_str() {
-                                        Some(path) => {
-                                            route_builder = route_builder.path(path::Matcher::new(
-                                                PermissionKind::Acceptable,
-                                                path::Kind::glob(path).map_err(
-                                                    ParseRouteErrorKind::PathGlobPattern,
-                                                )?,
-                                            ));
+                        if let Some(glob) = path.get("glob") {
+                            match glob.as_str() {
+                                Some(path) => {
+                                    route_builder = route_builder.path(path::Matcher::new(
+                                        PermissionKind::Acceptable,
+                                        path::Kind::glob(path)
+                                            .map_err(ParseRouteErrorKind::PathGlobPattern)?,
+                                    ));
 
-                                            continue;
-                                        }
-                                        None => {
-                                            return Err(ParseRouteErrorKind::PathGlobMustBeString(
-                                                glob.clone(),
-                                            ))
-                                        }
-                                    }
+                                    continue;
                                 }
-
-                                event!(Level::TRACE, "Path glob not found");
-
-                                if let Some(exact) = path.get("exact") {
-                                    match exact.as_str() {
-                                        Some(path) => {
-                                            route_builder = route_builder.path(path::Matcher::new(
-                                                PermissionKind::Acceptable,
-                                                path::Kind::exact(path),
-                                            ));
-
-                                            continue;
-                                        }
-                                        None => {
-                                            return Err(ParseRouteErrorKind::PathExactMustBeString(
-                                                exact.clone(),
-                                            ))
-                                        }
-                                    }
+                                None => {
+                                    return Err(ParseRouteErrorKind::PathGlobMustBeString(
+                                        glob.clone(),
+                                    ))
                                 }
-
-                                event!(Level::TRACE, "Path exact not found");
                             }
-                            None => return Err(ParseRouteErrorKind::PathMustBeTable(path.clone())),
                         }
+
+                        event!(Level::TRACE, "Path glob not found");
+
+                        if let Some(exact) = path.get("exact") {
+                            match exact.as_str() {
+                                Some(path) => {
+                                    route_builder = route_builder.path(path::Matcher::new(
+                                        PermissionKind::Acceptable,
+                                        path::Kind::exact(path),
+                                    ));
+
+                                    continue;
+                                }
+                                None => {
+                                    return Err(ParseRouteErrorKind::PathExactMustBeString(
+                                        exact.clone(),
+                                    ))
+                                }
+                            }
+                        }
+
+                        event!(Level::TRACE, "Path exact not found");
                     }
                 }
                 None => {
@@ -639,52 +539,46 @@ pub fn parse_route_from_toml(raw: &str) -> Result<Route, ParseRouteErrorKind> {
                     };
 
                     for path in unacceptable {
-                        match path.as_table() {
-                            Some(path) => {
-                                if let Some(glob) = path.get("glob") {
-                                    match glob.as_str() {
-                                        Some(path) => {
-                                            route_builder = route_builder.path(path::Matcher::new(
-                                                PermissionKind::Unacceptable,
-                                                path::Kind::glob(path).map_err(
-                                                    ParseRouteErrorKind::PathGlobPattern,
-                                                )?,
-                                            ));
+                        if let Some(glob) = path.get("glob") {
+                            match glob.as_str() {
+                                Some(path) => {
+                                    route_builder = route_builder.path(path::Matcher::new(
+                                        PermissionKind::Unacceptable,
+                                        path::Kind::glob(path)
+                                            .map_err(ParseRouteErrorKind::PathGlobPattern)?,
+                                    ));
 
-                                            continue;
-                                        }
-                                        None => {
-                                            return Err(ParseRouteErrorKind::PathGlobMustBeString(
-                                                glob.clone(),
-                                            ))
-                                        }
-                                    }
+                                    continue;
                                 }
-
-                                event!(Level::TRACE, "Path glob not found");
-
-                                if let Some(exact) = path.get("exact") {
-                                    match exact.as_str() {
-                                        Some(path) => {
-                                            route_builder = route_builder.path(path::Matcher::new(
-                                                PermissionKind::Unacceptable,
-                                                path::Kind::exact(path),
-                                            ));
-
-                                            continue;
-                                        }
-                                        None => {
-                                            return Err(ParseRouteErrorKind::PathExactMustBeString(
-                                                exact.clone(),
-                                            ))
-                                        }
-                                    }
+                                None => {
+                                    return Err(ParseRouteErrorKind::PathGlobMustBeString(
+                                        glob.clone(),
+                                    ))
                                 }
-
-                                event!(Level::TRACE, "Path exact not found");
                             }
-                            None => return Err(ParseRouteErrorKind::PathMustBeTable(path.clone())),
                         }
+
+                        event!(Level::TRACE, "Path glob not found");
+
+                        if let Some(exact) = path.get("exact") {
+                            match exact.as_str() {
+                                Some(path) => {
+                                    route_builder = route_builder.path(path::Matcher::new(
+                                        PermissionKind::Unacceptable,
+                                        path::Kind::exact(path),
+                                    ));
+
+                                    continue;
+                                }
+                                None => {
+                                    return Err(ParseRouteErrorKind::PathExactMustBeString(
+                                        exact.clone(),
+                                    ))
+                                }
+                            }
+                        }
+
+                        event!(Level::TRACE, "Path exact not found");
                     }
                 }
                 None => {
@@ -705,63 +599,47 @@ pub enum ParsePollingErrorKind {
     #[error("Parse toml error: {0}")]
     ParseToml(#[from] toml::de::Error),
 
-    #[error("Config must be a table, found {0}")]
-    ConfigMustBeTable(Value),
-    #[error("Polling not found in table: {0}")]
-    PollingNotFound(Map<String, Value>),
+    #[error("Polling not found: {0}")]
+    PollingNotFound(Value),
     #[error("Polling must be a table, found {0}")]
     PollingMustBeTable(Value),
 
-    #[error("Redirections must be a table, found {0}")]
-    RedirectionsMustBeTable(Value),
-    #[error("Redirections acceptable not found in table: {0}")]
-    RedirectionsAcceptableNotFound(Map<String, Value>),
+    #[error("Redirections acceptable not found: {0}")]
+    RedirectionsAcceptableNotFound(Value),
     #[error("Redirections acceptable must be a bool, found {0}")]
     RedirectionsAcceptableMustBeBool(Value),
-    #[error("Redirections max redirects not found in table: {0}")]
-    RedirectionsMaxRedirectsNotFound(Map<String, Value>),
+    #[error("Redirections max redirects not found: {0}")]
+    RedirectionsMaxRedirectsNotFound(Value),
     #[error(
         "Redirections max redirects must be an int or a string that represents an int, found {0}"
     )]
     RedirectionsMaxRedirectsMustBeStringOrInt(Value),
 
-    #[error("Depth must be a table, found {0}")]
-    DepthMustBeTable(Value),
-    #[error("Depth acceptable not found in table: {0}")]
-    DepthAcceptableNotFound(Map<String, Value>),
+    #[error("Depth acceptable not found: {0}")]
+    DepthAcceptableNotFound(Value),
     #[error("Depth acceptable must be a bool, found {0}")]
     DepthAcceptableMustBeBool(Value),
-    #[error("Depth max redirects not found in table: {0}")]
-    DepthMaxRedirectsNotFound(Map<String, Value>),
+    #[error("Depth max redirects not found: {0}")]
+    DepthMaxRedirectsNotFound(Value),
     #[error("Depth max depth must be an int or a string that represents an int, found {0}")]
     DepthMaxDepthMustBeStringOrInt(Value),
 
-    #[error("Time must be a table, found {0}")]
-    TimeMustBeTable(Value),
-    #[error("Min sleep between requests not found in table: {0}")]
-    MinSleepBetweenRequestsNotFound(Map<String, Value>),
+    #[error("Min sleep between requests not found: {0}")]
+    MinSleepBetweenRequestsNotFound(Value),
     #[error("Min sleep between requests value must be an int or a string that represents an int, found {0}")]
     MinSleepBetweenRequestsMustBeStringOrInt(Value),
-    #[error("Max sleep between requests not found in table: {0}")]
-    MaxSleepBetweenRequestsNotFound(Map<String, Value>),
+    #[error("Max sleep between requests not found: {0}")]
+    MaxSleepBetweenRequestsNotFound(Value),
     #[error("Max sleep between requests value must be an int or a string that represents an int, found {0}")]
     MaxSleepBetweenRequestsMustBeStringOrInt(Value),
-    #[error("Request timeout not found in table: {0}")]
-    RequestTimeoutNotFound(Map<String, Value>),
+    #[error("Request timeout not found: {0}")]
+    RequestTimeoutNotFound(Value),
     #[error("Request timeout value must be an int or a string that represents an int, found {0}")]
     RequestTimeoutMustBeStringOrInt(Value),
 
-    #[error("User agents must be an array, found {0}")]
-    UserAgentsMustBeArray(Value),
-    #[error("User agent must be a table, found {0}")]
-    UserAgentMustBeTable(Value),
     #[error("User agent value must be a string, found {0}")]
     UserAgentValueMustBeString(Value),
 
-    #[error("Proxies must be an array, found {0}")]
-    ProxiesMustBeArray(Value),
-    #[error("Proxy must be a table, found {0}")]
-    ProxyMustBeTable(Value),
     #[error("Proxy value must be a string, found {0}")]
     ProxyValueMustBeString(Value),
 }
@@ -782,16 +660,13 @@ pub fn parse_polling_from_toml(raw: &str) -> Result<Polling, ParsePollingErrorKi
     event!(Level::DEBUG, "Parse polling from toml");
 
     let value = raw.parse::<Value>()?;
-    let Some(table) = value.as_table() else {
-        return Err(ParsePollingErrorKind::ConfigMustBeTable(value));
-    };
 
-    let polling = match table.get("polling") {
+    let polling = match value.get("polling") {
         Some(polling) => match polling.as_table() {
             Some(polling) => polling,
             None => return Err(ParsePollingErrorKind::PollingMustBeTable(polling.clone())),
         },
-        None => return Err(ParsePollingErrorKind::PollingNotFound(table.clone())),
+        None => return Err(ParsePollingErrorKind::PollingNotFound(value.clone())),
     };
 
     let mut polling_builder = Polling::builder();
@@ -799,12 +674,6 @@ pub fn parse_polling_from_toml(raw: &str) -> Result<Polling, ParsePollingErrorKi
     match polling.get("redirections") {
         Some(redirections) => {
             event!(Level::TRACE, "Parse redirections");
-
-            let Some(redirections) = redirections.as_table() else {
-                return Err(ParsePollingErrorKind::RedirectionsMustBeTable(
-                    redirections.clone(),
-                ));
-            };
 
             let acceptable = if let Some(acceptable) = redirections.get("acceptable") {
                 if let Some(acceptable) = acceptable.as_bool() {
@@ -854,10 +723,6 @@ pub fn parse_polling_from_toml(raw: &str) -> Result<Polling, ParsePollingErrorKi
         Some(depth) => {
             event!(Level::TRACE, "Parse depth");
 
-            let Some(depth) = depth.as_table() else {
-                return Err(ParsePollingErrorKind::DepthMustBeTable(depth.clone()));
-            };
-
             let acceptable = if let Some(acceptable) = depth.get("acceptable") {
                 if let Some(acceptable) = acceptable.as_bool() {
                     acceptable
@@ -900,10 +765,6 @@ pub fn parse_polling_from_toml(raw: &str) -> Result<Polling, ParsePollingErrorKi
     match polling.get("time") {
         Some(time) => {
             event!(Level::TRACE, "Parse time");
-
-            let Some(time) = time.as_table() else {
-                return Err(ParsePollingErrorKind::TimeMustBeTable(time.clone()));
-            };
 
             let min_sleep_between_requests = if let Some(min_sleep_between_requests) =
                 time.get("min_sleep_between_requests")
@@ -991,40 +852,21 @@ pub fn parse_polling_from_toml(raw: &str) -> Result<Polling, ParsePollingErrorKi
         }
     }
 
-    match polling.get("user_agents") {
-        Some(user_agents) => {
-            event!(Level::TRACE, "Parse user agents");
+    match polling.get("user_agent") {
+        Some(user_agent) => {
+            event!(Level::TRACE, "Parse user agent");
 
-            let Some(user_agents) = user_agents.as_array() else {
-                return Err(ParsePollingErrorKind::UserAgentsMustBeArray(
-                    user_agents.clone(),
-                ));
-            };
-
-            for user_agent in user_agents {
-                match user_agent.as_table() {
-                    Some(user_agent) => {
-                        if let Some(value) = user_agent.get("value") {
-                            if let Some(value) = value.as_str() {
-                                polling_builder = polling_builder
-                                    .user_agent(user_agent::UserAgent::new(value.to_owned()));
-
-                                continue;
-                            }
-
-                            return Err(ParsePollingErrorKind::UserAgentValueMustBeString(
-                                value.clone(),
-                            ));
-                        }
-
-                        event!(Level::TRACE, "User agent value not found");
-                    }
-                    None => {
-                        return Err(ParsePollingErrorKind::UserAgentMustBeTable(
-                            user_agent.clone(),
-                        ))
-                    }
+            if let Some(value) = user_agent.get("value") {
+                if let Some(value) = value.as_str() {
+                    polling_builder = polling_builder
+                        .user_agent(Some(user_agent::UserAgent::new(value.to_owned())));
+                } else {
+                    return Err(ParsePollingErrorKind::UserAgentValueMustBeString(
+                        value.clone(),
+                    ));
                 }
+            } else {
+                event!(Level::TRACE, "User agent value not found");
             }
         }
         None => {
@@ -1032,34 +874,19 @@ pub fn parse_polling_from_toml(raw: &str) -> Result<Polling, ParsePollingErrorKi
         }
     }
 
-    match polling.get("proxies") {
-        Some(proxies) => {
-            event!(Level::TRACE, "Parse proxies");
+    match polling.get("proxy") {
+        Some(proxy) => {
+            event!(Level::TRACE, "Parse proxy");
 
-            let Some(proxies) = proxies.as_array() else {
-                return Err(ParsePollingErrorKind::ProxiesMustBeArray(proxies.clone()));
-            };
-
-            for proxy in proxies {
-                match proxy.as_table() {
-                    Some(proxy) => {
-                        if let Some(value) = proxy.get("value") {
-                            if let Some(value) = value.as_str() {
-                                polling_builder =
-                                    polling_builder.proxy(proxy::Proxy::new(value.to_owned()));
-
-                                continue;
-                            }
-
-                            return Err(ParsePollingErrorKind::ProxyValueMustBeString(
-                                value.clone(),
-                            ));
-                        }
-
-                        event!(Level::TRACE, "Proxy value not found");
-                    }
-                    None => return Err(ParsePollingErrorKind::ProxyMustBeTable(proxy.clone())),
+            if let Some(value) = proxy.get("value") {
+                if let Some(value) = value.as_str() {
+                    polling_builder =
+                        polling_builder.proxy(Some(proxy::Proxy::new(value.to_owned())));
+                } else {
+                    return Err(ParsePollingErrorKind::ProxyValueMustBeString(value.clone()));
                 }
+            } else {
+                event!(Level::TRACE, "Proxy value not found");
             }
         }
         None => {
@@ -1256,15 +1083,11 @@ mod tests {
             max_sleep_between_requests = 10000
             request_timeout = 1000
 
-            [[polling.user_agents]]
+            [polling.user_agent]
             value = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
 
-            [[polling.user_agents]]
-
-            [[polling.proxies]]
+            [polling.proxy]
             value = "http://"
-
-            [[polling.proxies]]
         "#;
 
         let polling = parse_polling_from_toml(raw).unwrap();
@@ -1279,13 +1102,13 @@ mod tests {
         assert_eq!(polling.time.max_sleep_between_requests, 10000);
         assert_eq!(polling.time.request_timeout, 1000);
 
-        assert_eq!(polling.user_agents.len(), 1);
+        assert!(polling.user_agent.is_some());
         assert_eq!(
-            **(*polling.user_agents).first().unwrap(),
+            *polling.user_agent.unwrap(),
             "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
         );
 
-        assert_eq!(polling.proxies.len(), 1);
-        assert_eq!(**(*polling.proxies).first().unwrap(), "http://");
+        assert!(polling.proxy.is_some());
+        assert_eq!(*polling.proxy.unwrap(), "http://");
     }
 }

@@ -219,7 +219,7 @@ mod tests {
     #[tokio::test]
     #[should_panic = "called `Result::unwrap()` on an `Err` value: RootUrlsEmpty"]
     async fn test_polling_panic() {
-        let client = Reqwest::default().unwrap();
+        let client = Reqwest::default();
         let rules = Rules::default();
 
         let polling = Polling::new(client, rules.route, rules.polling);

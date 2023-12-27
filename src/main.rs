@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     event!(Level::INFO, %rules, "Rules parsed");
 
-    let client = Reqwest::default().unwrap();
+    let client = Reqwest::default();
 
     let polling = Polling::new(client, rules.route, rules.polling);
 
