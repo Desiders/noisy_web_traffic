@@ -47,13 +47,10 @@ impl Display for Polling {
             f,
             "Polling {{ depth: {}, proxy: {}, redirections: {}, time: {}, user_agent: {} }}",
             self.depth,
-            self.proxy.as_ref().map(|p| p.as_ref()).unwrap_or("None"),
+            self.proxy.as_ref().map_or("None", AsRef::as_ref),
             self.redirections,
             self.time,
-            self.user_agent
-                .as_ref()
-                .map(|ua| ua.as_ref())
-                .unwrap_or("None")
+            self.user_agent.as_ref().map_or("None", AsRef::as_ref),
         )
     }
 }
@@ -85,8 +82,8 @@ impl Builder {
         self
     }
 
-    pub fn proxy(mut self, proxy: Option<proxy::Proxy>) -> Self {
-        self.proxy = proxy;
+    pub fn proxy(mut self, proxy: proxy::Proxy) -> Self {
+        self.proxy = Some(proxy);
         self
     }
 
@@ -100,8 +97,8 @@ impl Builder {
         self
     }
 
-    pub fn user_agent(mut self, user_agent: Option<user_agent::UserAgent>) -> Self {
-        self.user_agent = user_agent;
+    pub fn user_agent(mut self, user_agent: user_agent::UserAgent) -> Self {
+        self.user_agent = Some(user_agent);
         self
     }
 

@@ -73,10 +73,8 @@ impl Polling {
         url: &Url,
         depth: u16,
     ) -> Result<(), CrawlWithParentUrlErrorKind> {
-        if depth > 0 {
-            if !self.depth_matches(depth) {
-                return Err(CrawlWithParentUrlErrorKind::DepthLimitReached);
-            }
+        if depth > 0 && !self.depth_matches(depth) {
+            return Err(CrawlWithParentUrlErrorKind::DepthLimitReached);
         }
 
         event!(Level::INFO, "Start crawling");
@@ -95,14 +93,10 @@ impl Polling {
 
         match self.get_crawler().crawl(url).await?.get_page_urls() {
             Some(page_urls) => {
-                let mut current_iter = 0;
-
-                for page_url in page_urls.into_iter() {
-                    if current_iter >= MAX_PAGE_URLS {
+                for (index, page_url) in page_urls.enumerate() {
+                    if index >= MAX_PAGE_URLS {
                         break;
                     }
-
-                    current_iter += 1;
 
                     urls.push(page_url);
                 }
@@ -136,7 +130,7 @@ impl Polling {
 
         urls.shuffle(&mut thread_rng());
 
-        for url in urls.into_iter() {
+        for url in urls {
             let Err(err) = self.run_with_parent_url(&url, depth + 1).await else {
                 // We don't want to crawl all site URLs over and over again.
                 // So we stop crawling child URLs if we reached the depth limit at least once.

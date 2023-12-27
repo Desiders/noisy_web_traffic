@@ -859,7 +859,7 @@ pub fn parse_polling_from_toml(raw: &str) -> Result<Polling, ParsePollingErrorKi
             if let Some(value) = user_agent.get("value") {
                 if let Some(value) = value.as_str() {
                     polling_builder = polling_builder
-                        .user_agent(Some(user_agent::UserAgent::new(value.to_owned())));
+                        .user_agent(user_agent::UserAgent::new(value.to_owned()));
                 } else {
                     return Err(ParsePollingErrorKind::UserAgentValueMustBeString(
                         value.clone(),
@@ -881,7 +881,7 @@ pub fn parse_polling_from_toml(raw: &str) -> Result<Polling, ParsePollingErrorKi
             if let Some(value) = proxy.get("value") {
                 if let Some(value) = value.as_str() {
                     polling_builder =
-                        polling_builder.proxy(Some(proxy::Proxy::new(value.to_owned())));
+                        polling_builder.proxy(proxy::Proxy::new(value.to_owned()));
                 } else {
                     return Err(ParsePollingErrorKind::ProxyValueMustBeString(value.clone()));
                 }
