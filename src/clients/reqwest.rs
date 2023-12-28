@@ -7,6 +7,7 @@ use std::time::Duration;
 use tracing::instrument;
 
 pub struct Reqwest {
+    user_agent: Option<UserAgent>,
     client: Client,
 }
 
@@ -29,13 +30,18 @@ impl Reqwest {
             client_builder = client_builder.proxy(reqwest::Proxy::all(proxy.as_ref())?);
         }
 
-        if let Some(user_agent) = user_agent {
+        if let Some(ref user_agent) = user_agent {
             client_builder = client_builder.user_agent(user_agent.as_ref());
         }
 
         Ok(Self {
+            user_agent,
             client: client_builder.build()?,
         })
+    }
+
+    pub const fn user_agent(&self) -> Option<&UserAgent> {
+        self.user_agent.as_ref()
     }
 
     #[instrument(skip_all, fields(url = %url.as_ref()))]

@@ -1,19 +1,32 @@
 use crate::{
     clients::reqwest::Reqwest,
     models::route::Route,
-    parser::{dom::get_dom_guard, urls::get_urls_from_dom},
+    parser::{
+        dom::get_dom_guard,
+        robots_txt::{get_robot_rules, InvalidRobotRules},
+        urls::get_urls_from_dom,
+    },
     validation::route::validate_url,
 };
 
+use texting_robots::Robot;
 use tl::VDomGuard as DomGuard;
 use url::Url;
 
 #[derive(Debug, thiserror::Error)]
-pub enum ErrorKind {
+pub enum CrawlUrlErrorKind {
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
     #[error(transparent)]
     Parse(#[from] tl::ParseError),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum CrawlRobotsTxtErrorKind {
+    #[error(transparent)]
+    Reqwest(#[from] reqwest::Error),
+    #[error(transparent)]
+    Parse(#[from] InvalidRobotRules),
 }
 
 pub struct Crawler<'a, 'b> {
@@ -26,11 +39,17 @@ impl<'a, 'b> Crawler<'a, 'b> {
         Self { client, route }
     }
 
-    pub async fn crawl(&self, url: &Url) -> Result<CrawlerInner, ErrorKind> {
+    pub async fn crawl_url(&self, url: &Url) -> Result<CrawlerInner, CrawlUrlErrorKind> {
         let raw_html = self.client.get(url).await?.text().await?;
         let dom_guard = get_dom_guard(raw_html)?;
 
         Ok(CrawlerInner::new(dom_guard, self.route))
+    }
+
+    pub async fn crawl_robots_text(&self, url: &Url) -> Result<Robot, CrawlRobotsTxtErrorKind> {
+        let raw_text = self.client.get(url).await?.text().await?;
+
+        get_robot_rules(&self.client.user_agent(), &raw_text).map_err(Into::into)
     }
 }
 

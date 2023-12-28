@@ -1,6 +1,6 @@
 use crate::{
     clients::reqwest::Reqwest,
-    crawlers::urls::{Crawler, ErrorKind as CrawlErrorKind},
+    crawlers::urls::{CrawlUrlErrorKind as CrawlErrorKind, Crawler},
     models::{polling::Polling as PollingRules, route::Route, routes::root_urls::RootUrls},
 };
 
@@ -91,7 +91,7 @@ impl Polling {
 
         let mut urls = Vec::with_capacity(100);
 
-        match self.get_crawler().crawl(url).await?.get_page_urls() {
+        match self.get_crawler().crawl_url(url).await?.get_page_urls() {
             Some(page_urls) => {
                 for (index, page_url) in page_urls.enumerate() {
                     if index >= MAX_PAGE_URLS {
